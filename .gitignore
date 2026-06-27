@@ -2,7 +2,7 @@
 .idea/
 .vscode/
 .github/
-.workbuddy/
+
 
 # 编译产物
 target/
