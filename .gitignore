@@ -1,0 +1,20 @@
+# IDE 配置文件
+.idea/
+.vscode/
+.github/
+.workbuddy/
+
+# 编译产物
+target/
+*.class
+*.jar
+
+# 系统文件
+.DS_Store
+Thumbs.db
+bash.exe.stackdump
+
+# 敏感配置
+application*.yml
+application*.properties
+.env

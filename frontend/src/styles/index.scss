@@ -1,0 +1,181 @@
+// 重置样式
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: $bg-color;
+  color: $text-regular;
+}
+
+// Element Plus 按钮 —— 直接属性覆盖，保证可见
+.el-button {
+  background-color: #e4e7ed !important;
+  border-color: #b0b3ba !important;
+  color: #303133 !important;
+  font-weight: 500 !important;
+  &:hover {
+    background-color: #ecf5ff !important;
+    border-color: $primary-color !important;
+    color: $primary-color !important;
+  }
+  &.is-link {
+    background-color: transparent !important;
+    border-color: transparent !important;
+  }
+}
+
+.el-button--primary {
+  background-color: $primary-color !important;
+  border-color: $primary-color !important;
+  color: #fff !important;
+  &:hover {
+    background-color: #3d4ab3 !important;
+    border-color: #3d4ab3 !important;
+    color: #fff !important;
+  }
+  &.is-link {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    color: $primary-color !important;
+    &:hover { color: #3d4ab3 !important; }
+  }
+}
+
+.el-button--success {
+  background-color: $success-color !important;
+  border-color: $success-color !important;
+  color: #fff !important;
+  &:hover {
+    background-color: #2d7a0a !important;
+    border-color: #2d7a0a !important;
+    color: #fff !important;
+  }
+  &.is-link {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    color: $success-color !important;
+    &:hover { color: #2d7a0a !important; }
+  }
+}
+
+.el-button--warning {
+  background-color: $warning-color !important;
+  border-color: $warning-color !important;
+  color: #fff !important;
+  &:hover {
+    background-color: #b57204 !important;
+    border-color: #b57204 !important;
+    color: #fff !important;
+  }
+  &.is-link {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    color: $warning-color !important;
+    &:hover { color: #b57204 !important; }
+  }
+}
+
+.el-button--danger {
+  background-color: $danger-color !important;
+  border-color: $danger-color !important;
+  color: #fff !important;
+  &:hover {
+    background-color: #d41a24 !important;
+    border-color: #d41a24 !important;
+    color: #fff !important;
+  }
+  &.is-link {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    color: $danger-color !important;
+    &:hover { color: #d41a24 !important; }
+  }
+}
+
+.el-button--info {
+  background-color: #909399 !important;
+  border-color: #909399 !important;
+  color: #fff !important;
+  &:hover {
+    background-color: #7b7d82 !important;
+    border-color: #7b7d82 !important;
+    color: #fff !important;
+  }
+  &.is-link {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    color: #909399 !important;
+    &:hover { color: #7b7d82 !important; }
+  }
+}
+
+// Element Plus 标签 —— 实色背景 + 白字
+.el-tag {
+  color: #fff !important;
+  font-weight: 500 !important;
+}
+.el-tag--success { background-color: $success-color !important; }
+.el-tag--warning { background-color: $warning-color !important; }
+.el-tag--danger  { background-color: $danger-color !important; }
+.el-tag--info    { background-color: #909399 !important; }
+.el-tag--primary { background-color: $primary-color !important; }
+
+.el-menu {
+  --el-menu-bg-color: #001529;
+  --el-menu-text-color: rgba(255, 255, 255, 0.65);
+  --el-menu-active-color: #fff;
+  --el-menu-hover-bg-color: rgba(255, 255, 255, 0.1);
+}
+
+// 工具类
+.text-primary {
+  color: $text-primary;
+}
+
+.text-secondary {
+  color: $text-secondary;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.mt-1 { margin-top: $spacing-xs; }
+.mt-2 { margin-top: $spacing-sm; }
+.mt-3 { margin-top: $spacing-md; }
+.mt-4 { margin-top: $spacing-lg; }
+.mt-5 { margin-top: $spacing-xl; }
+
+.mb-1 { margin-bottom: $spacing-xs; }
+.mb-2 { margin-bottom: $spacing-sm; }
+.mb-3 { margin-bottom: $spacing-md; }
+.mb-4 { margin-bottom: $spacing-lg; }
+.mb-5 { margin-bottom: $spacing-xl; }
+
+// 卡片样式
+.page-card {
+  background: $bg-white;
+  border-radius: $border-radius-base;
+  padding: $spacing-lg;
+  box-shadow: $shadow-light;
+}
+
+// 表格样式
+.page-table {
+  .el-table {
+    border-radius: $border-radius-base;
+    overflow: hidden;
+  }
+}
+
+// 表单样式
+.page-form {
+  max-width: 800px;
+}
