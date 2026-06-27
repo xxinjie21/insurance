@@ -15,6 +15,4 @@ Thumbs.db
 bash.exe.stackdump
 
 # 敏感配置
-application*.yml
-application*.properties
 .env

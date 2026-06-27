@@ -79,7 +79,7 @@
 
 #### 1. 克隆项目
 ```bash
-git clone <repository-url>
+git clone https://github.com/xxinjie21/insurance.git
 cd insurance
 ```
 
@@ -139,27 +139,27 @@ API 文档：http://localhost:8080/api-docs (如有 Swagger)
 
 ## 🔑 核心技术特性
 
-### 1. 权限控制
-- 基于 JWT Token 的身份认证
-- 自定义 `@Permission` 注解实现角色权限控制
-- 拦截器统一处理权限校验
+### 1. 并发重复提交防重
+- Redis 预校验 → Redisson 分布式锁 → 数据库唯一索引，三层递进式幂等校验
+- 应用场景：就诊结算、批次申报、基金拨付
 
-### 2. 并发控制
-- **分布式锁**: 使用 Redisson 实现，防止并发操作
-- **应用场景**: 结算、批次创建、充值、拨付等关键业务
+### 2. 事务与缓存一致性
+- 编程式事务（`TransactionTemplate`）替代声明式事务（`@Transactional`）
+- 事务提交成功后才写入 Redis 幂等缓存，回滚不产生脏数据
 
-### 3. 幂等性控制
-- **Redis 幂等标识**: 防止重复提交
-- **双层校验**: 事务外快速拦截 + 事务内精确校验
-- **应用场景**: 结算、拨付、批次添加等
+### 3. 业务粒度分布式锁
+- 基于 Redisson 实现单据级细粒度锁（`lock:settle:{visitId}`）
+- 仅串行化同一单据的并发请求，消除全局锁竞争阻塞
 
-### 4. 缓存优化
-- **Redis 缓存**: 就诊记录等高频查询数据
-- **缓存策略**: 先查缓存，未命中则查数据库并回写
+### 4. 细粒度权限管控
+- `@Permission` 注解 + SpringMVC 拦截器，Controller/Method 级声明式权限校验
+- 支持患者/医院/医保局/管理员四种角色，无需硬编码角色判断
 
-### 5. 金额精度
-- 使用 `BigDecimal` 精确计算
-- 先累加再四舍五入，避免累积误差
+### 5. 缓存穿透防护
+- Cache-Aside 模式 + 空值短 TTL 缓存，防止不存在的数据击穿数据库
+
+### 6. N+1 查询消除
+- 结算单详情多级关联（结算单→就诊→用户），ID 聚合 → 批量加载 → Map 映射，SQL 从 O(N) 降至常数级
 
 ## 📖 API 接口概览
 
@@ -233,31 +233,33 @@ API 文档：http://localhost:8080/api-docs (如有 Swagger)
 
 ```
 insurance/
-├── docs/                           # 文档目录
-│   ├── int.sql                    # 数据库初始化脚本
-│   ├── api-test-cases.md          # API 测试案例
-│   └── 业务接口运行流程说明.md     # 业务流程文档
-├── src/main/java/com/xxj/insurance/
-│   ├── common/                     # 公共模块
-│   │   ├── annotation/            # 自定义注解（@Permission）
-│   │   ├── config/                # 配置类
-│   │   ├── constants/             # 常量定义
-│   │   ├── domain/                # 通用 DTO
-│   │   ├── enums/                 # 枚举
-│   │   ├── interceptors/          # 拦截器
-│   │   └── utils/                 # 工具类
-│   ├── controller/                 # Controller 层
-│   ├── domain/                     # 领域模型
-│   │   ├── dto/                   # 数据传输对象
-│   │   ├── po/                    # 持久化对象
-│   │   └── vo/                    # 视图对象
-│   ├── mapper/                     # Mapper 层
-│   └── service/                    # Service 层
-│       ├── impl/                  # Service 实现
-│       └── interfaces/            # Service 接口
-└── src/main/resources/
-    ├── mapper/                     # MyBatis XML
-    └── application.yml             # 应用配置
+├── doc/                             # 项目文档
+│   ├── api-test-cases.md           # API 测试案例
+│   ├── interview-guide.md          # 面试复习指南
+│   └── technical-architecture.md   # 技术架构文档
+├── insurance/
+│   ├── docs/int.sql                # 数据库初始化脚本
+│   └── src/main/java/com/xxj/insurance/
+│       ├── common/                  # 公共模块
+│       │   ├── annotation/         # 自定义注解（@Permission）
+│       │   ├── config/             # 配置类（Redisson、MVC、MyBatis）
+│       │   ├── constants/          # 常量定义
+│       │   ├── domain/             # 通用响应体（Result、PageDTO）
+│       │   ├── enums/              # 枚举（Role）
+│       │   ├── exception/          # 全局异常处理
+│       │   ├── interceptors/       # 拦截器（Token + 权限校验）
+│       │   └── utils/              # 工具类（JWT、UserHolder）
+│       ├── controller/             # Controller 层
+│       ├── domain/
+│       │   ├── dto/                # 数据传输对象
+│       │   ├── po/                 # 持久化对象（MyBatis-Plus Entity）
+│       │   └── vo/                 # 视图对象
+│       ├── mapper/                 # Mapper 接口 + XML
+│       └── service/
+│           ├── impl/               # Service 实现
+│           └── I*Service.java      # Service 接口
+├── frontend/                       # Vue3 前端
+└── README.md
 ```
 
 ## 🧪 测试
@@ -279,8 +281,8 @@ mvn test -Dtest=UserServiceTest
 ### 代码风格
 - 使用 Lombok 简化代码
 - 统一使用 `Result` 包装返回结果
-- Service 层统一使用 `@RequiredArgsConstructor`
-- 事务统一使用 `@Transactional(rollbackFor = Exception.class)`
+- Service 层统一使用 `@RequiredArgsConstructor` 构造器注入
+- 事务使用编程式 `TransactionTemplate`，精确控制事务边界与缓存写入时机
 
 ### 命名规范
 - 表名、字段名：下划线命名（如 `user_account`）
@@ -297,7 +299,7 @@ mvn test -Dtest=UserServiceTest
 
 ### 2. 登录失败
 - 确认用户已注册
-- 检查密码是否 MD5 加密
+- 检查密码是否正确（BCrypt 加密）
 - 查看 Redis 是否正常运行
 
 ### 3. 权限不足
@@ -313,6 +315,3 @@ mvn test -Dtest=UserServiceTest
 
 - 开发：xxj
 - 版本：1.0.0
-
-#   i n s u r a n c e  
- 
