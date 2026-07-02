@@ -423,93 +423,125 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         return Result.ok(new PageDTO<>(pageDTO.getPageNum(), pageDTO.getPageSize(), page.getTotal(), voList));
     }
 
-    // 批量组装结算单 VO：就诊 + 患者 + 医院（走缓存）
+    // 批量组装结算单 VO：ID 聚合 → 批量加载 → Map 映射，SQL O(N)→O(1)
     private List<SettleVO> enrichSettleVOList(List<Settle> records) {
         if (records == null || records.isEmpty()) {
             return Collections.emptyList();
         }
 
+        // 1. ID 聚合：收集所有 visitId
         Set<Long> visitIds = records.stream()
                 .map(Settle::getVisitId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
+
+        // 2. 批量加载就诊：缓存命中直接入 Map，未命中收集 → listByIds 批量 IN 查询 → 写回缓存
         Map<Long, Visit> visitMap = new HashMap<>();
+        List<Long> missedVisitIds = new ArrayList<>();
         for (Long id : visitIds) {
             String key = "cache:visit:" + id;
             String json = redisTemplate.opsForValue().get(key);
-            Visit visit = null;
-            if (json != null) {
+            if (StrUtil.isNotBlank(json)) {
                 try {
-                    visit = JSON.parseObject(json, Visit.class);
+                    visitMap.put(id, JSON.parseObject(json, Visit.class));
                 } catch (Exception e) {
                     log.warn("缓存解析失败 key:{}", key, e);
+                    missedVisitIds.add(id);
                 }
+            } else {
+                missedVisitIds.add(id);
             }
-            if (visit == null) {
-                visit = visitService.getById(id);
-                if (visit != null) {
-                    redisTemplate.opsForValue().set(key, JSON.toJSONString(visit), 30, TimeUnit.MINUTES);
+        }
+        if (!missedVisitIds.isEmpty()) {
+            List<Visit> visitList = visitService.listByIds(missedVisitIds);
+            for (Visit visit : visitList) {
+                visitMap.put(visit.getId(), visit);
+                redisTemplate.opsForValue().set("cache:visit:" + visit.getId(),
+                        JSON.toJSONString(visit), RedisConstants.CACHE_VISIT_TTL, TimeUnit.MINUTES);
+            }
+            // 缓存空值防穿透
+            for (Long id : missedVisitIds) {
+                if (!visitMap.containsKey(id)) {
+                    redisTemplate.opsForValue().set("cache:visit:" + id, "", 1, TimeUnit.MINUTES);
                 }
-            }
-            if (visit != null) {
-                visitMap.put(id, visit);
             }
         }
 
+        // 3. ID 聚合：从 visitMap 收集所有 userId
         Set<Long> userIds = visitMap.values().stream()
                 .map(Visit::getUserId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
+
+        // 4. 批量加载患者：缓存命中直接入 Map，未命中收集 → listByIds 批量 IN 查询 → 写回缓存
         Map<Long, User> userMap = new HashMap<>();
+        List<Long> missedUserIds = new ArrayList<>();
         for (Long id : userIds) {
             String key = "cache:user:" + id;
             String json = redisTemplate.opsForValue().get(key);
-            User user = null;
-            if (json != null) {
+            if (StrUtil.isNotBlank(json)) {
                 try {
-                    user = JSON.parseObject(json, User.class);
+                    userMap.put(id, JSON.parseObject(json, User.class));
                 } catch (Exception e) {
                     log.warn("缓存解析失败 key:{}", key, e);
+                    missedUserIds.add(id);
                 }
+            } else {
+                missedUserIds.add(id);
             }
-            if (user == null) {
-                user = userService.getById(id);
-                if (user != null) {
-                    redisTemplate.opsForValue().set(key, JSON.toJSONString(user), 30, TimeUnit.MINUTES);
+        }
+        if (!missedUserIds.isEmpty()) {
+            List<User> userList = userService.listByIds(missedUserIds);
+            for (User user : userList) {
+                userMap.put(user.getId(), user);
+                redisTemplate.opsForValue().set("cache:user:" + user.getId(),
+                        JSON.toJSONString(user), 30, TimeUnit.MINUTES);
+            }
+            for (Long id : missedUserIds) {
+                if (!userMap.containsKey(id)) {
+                    redisTemplate.opsForValue().set("cache:user:" + id, "", 1, TimeUnit.MINUTES);
                 }
-            }
-            if (user != null) {
-                userMap.put(id, user);
             }
         }
 
+        // 5. ID 聚合：从 records 收集所有 hospitalId
         Set<Long> hospitalIds = records.stream()
                 .map(Settle::getHospitalId)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
+
+        // 6. 批量加载医院：缓存命中直接入 Map，未命中收集 → listByIds 批量 IN 查询 → 写回缓存
         Map<Long, Hospital> hospitalMap = new HashMap<>();
+        List<Long> missedHospitalIds = new ArrayList<>();
         for (Long id : hospitalIds) {
             String key = "cache:hospital:" + id;
             String json = redisTemplate.opsForValue().get(key);
-            Hospital hospital = null;
-            if (json != null) {
+            if (StrUtil.isNotBlank(json)) {
                 try {
-                    hospital = JSON.parseObject(json, Hospital.class);
+                    hospitalMap.put(id, JSON.parseObject(json, Hospital.class));
                 } catch (Exception e) {
                     log.warn("缓存解析失败 key:{}", key, e);
+                    missedHospitalIds.add(id);
                 }
+            } else {
+                missedHospitalIds.add(id);
             }
-            if (hospital == null) {
-                hospital = hospitalService.getById(id);
-                if (hospital != null) {
-                    redisTemplate.opsForValue().set(key, JSON.toJSONString(hospital), 30, TimeUnit.MINUTES);
+        }
+        if (!missedHospitalIds.isEmpty()) {
+            List<Hospital> hospitalList = hospitalService.listByIds(missedHospitalIds);
+            for (Hospital hospital : hospitalList) {
+                hospitalMap.put(hospital.getId(), hospital);
+                redisTemplate.opsForValue().set("cache:hospital:" + hospital.getId(),
+                        JSON.toJSONString(hospital), 30, TimeUnit.MINUTES);
+            }
+            for (Long id : missedHospitalIds) {
+                if (!hospitalMap.containsKey(id)) {
+                    redisTemplate.opsForValue().set("cache:hospital:" + id, "", 1, TimeUnit.MINUTES);
                 }
-            }
-            if (hospital != null) {
-                hospitalMap.put(id, hospital);
             }
         }
 
+        // 7. Map 映射：组装 VO
         List<SettleVO> voList = new ArrayList<>();
         for (Settle settle : records) {
             SettleVO vo = new SettleVO();
@@ -546,7 +578,7 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         vo.setIdCard(idCard);
     }
 
-    // 查询可加入批次的结算单（待申报 + 已自付）
+    // 查询可加入批次的结算单（待申报 + 已自付），复用 enrichSettleVOList 批量加载
     @Override
     public Result availableForBatch(Long hospitalId) {
         if (hospitalId == null) {
@@ -564,79 +596,8 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
             return Result.ok(Collections.emptyList());
         }
 
-        // 批量查就诊（Redis 缓存，避免 N+1）
-        Set<Long> visitIds = settles.stream()
-                .map(Settle::getVisitId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<Long, Visit> visitMap = new HashMap<>();
-        for (Long id : visitIds) {
-            String key = "cache:visit:" + id;
-            String json = redisTemplate.opsForValue().get(key);
-            Visit visit = null;
-            if (json != null) {
-                try {
-                    visit = JSON.parseObject(json, Visit.class);
-                } catch (Exception e) {
-                    log.warn("缓存解析失败 key:{}", key, e);
-                }
-            }
-            if (visit == null) {
-                visit = visitService.getById(id);
-                if (visit != null) {
-                    redisTemplate.opsForValue().set(key, JSON.toJSONString(visit), 30, TimeUnit.MINUTES);
-                }
-            }
-            if (visit != null) {
-                visitMap.put(id, visit);
-            }
-        }
-
-        // 批量查询患者 — Redis 缓存
-        Set<Long> userIds = visitMap.values().stream()
-                .map(Visit::getUserId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<Long, User> userMap = new HashMap<>();
-        for (Long id : userIds) {
-            String key = "cache:user:" + id;
-            String json = redisTemplate.opsForValue().get(key);
-            User user = null;
-            if (json != null) {
-                try {
-                    user = JSON.parseObject(json, User.class);
-                } catch (Exception e) {
-                    log.warn("缓存解析失败 key:{}", key, e);
-                }
-            }
-            if (user == null) {
-                user = userService.getById(id);
-                if (user != null) {
-                    redisTemplate.opsForValue().set(key, JSON.toJSONString(user), 30, TimeUnit.MINUTES);
-                }
-            }
-            if (user != null) {
-                userMap.put(id, user);
-            }
-        }
-
-        // 组装 VO
-        List<SettleVO> voList = new ArrayList<>();
-        for (Settle settle : settles) {
-            SettleVO vo = new SettleVO();
-            BeanUtils.copyProperties(settle, vo);
-
-            Visit visit = visitMap.get(settle.getVisitId());
-            if (visit != null) {
-                vo.setVisitType(visit.getType());
-                vo.setDiagnosis(visit.getDiagnosis());
-                User user = userMap.get(visit.getUserId());
-                fillPatientIdCard(vo, user);
-            }
-
-            voList.add(vo);
-        }
-
+        // ID 聚合 → 批量加载 → Map 映射（复用批量查询方法）
+        List<SettleVO> voList = enrichSettleVOList(settles);
         return Result.ok(voList);
     }
 }
