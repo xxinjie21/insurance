@@ -661,7 +661,7 @@ pageNum=1&pageSize=10
 - 结算计算（`lock:settle:{visitId}` + 幂等标记）
 - 批次申报（`lock:batch:declare:{batchId}` + 幂等标记）
 - 拨付操作（`lock:pay:batch:{batchId}` + 幂等标记）
-- 充值操作（`lock:account:recharge:{userId}`）
+- 充值操作（`lock:account:{userId}`）
 
 ---
 
@@ -720,7 +720,7 @@ pageNum=1&pageSize=10
 | 接口 | 并发数 | 锁Key | 预期结果 |
 |------|--------|-------|----------|
 | 结算计算 | 10 | `lock:settle:{visitId}` | 只有一个成功，其余返回"正在处理中" |
-| 充值 | 10 | `lock:account:recharge:{userId}` | 余额正确累加，无数据丢失 |
+| 充值 | 10 | `lock:account:{userId}` | 余额正确累加，无数据丢失 |
 | 批次创建 | 10 | `lock:batch:create:{hospitalId}` | 全部成功，批次号各有不同 |
 
 ### 11.2 压力测试

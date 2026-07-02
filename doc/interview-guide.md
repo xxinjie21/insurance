@@ -112,21 +112,17 @@ wrapper.eq(Settle::getHospitalId, hospitalId)
 #### Q: 什么是 N+1 问题？如何解决？
 
 **回答要点**：
-1. **问题**：查询 N 条主记录后，循环查询关联记录，导致 N+1 次 SQL
-2. **解决**：使用批量查询 + Map 映射
+1. **问题**：查询 N 条结算单后，循环逐条查关联的就诊、患者、医院，导致 3N+1 次 SQL
+2. **本项目解决**：ID 聚合 → 批量加载 → Map 映射
 
-```java
-// 错误：N+1 查询
-for (BatchItem item : items) {
-    Settle settle = settleService.getById(item.getSettleId());
-}
-
-// 正确：批量查询
-Set<Long> settleIds = items.stream().map(BatchItem::getSettleId).collect(Collectors.toSet());
-List<Settle> settleList = settleService.listByIds(settleIds);
-Map<Long, Settle> settleMap = settleList.stream()
-    .collect(Collectors.toMap(Settle::getId, Function.identity()));
 ```
+Step 1 — ID 聚合：收集所有 visitId / userId / hospitalId 到 Set
+Step 2 — 批量加载：缓存命中直接入 Map，未命中的 ID 聚合后用 listByIds(ids) 一次 IN 查询
+Step 3 — Map 映射：组装 VO 时按 ID 从 Map 取值 O(1)
+```
+
+- **代码位置**：[SettleServiceImpl.enrichSettleVOList()](insurance/src/main/java/com/xxj/insurance/service/impl/SettleServiceImpl.java#L426-L568)
+- **效果**：SQL 从 O(N)（3N+1 次）降至常数级（3 条 IN 查询 + N 次缓存命中）
 
 ### 2.3 Redis 相关
 
@@ -198,7 +194,7 @@ try {
 2. **本项目设计**：
    - 结算锁：`lock:settle:{visitId}` - 就诊级别
    - 批次锁：`lock:batch:add:{batchId}` - 批次级别
-   - 充值锁：`lock:account:recharge:{userId}` - 用户级别
+   - 充值锁：`lock:account:{userId}` - 用户级别
 
 #### Q: 分布式锁获取失败怎么处理？
 
@@ -331,18 +327,23 @@ private BigDecimal getReimburseRate(Integer type) {
 3. **乐观锁**：可使用版本号控制
 
 ```java
-String lockKey = "lock:account:recharge:" + userId;
+String lockKey = "lock:account:" + userId;
 RLock lock = redissonClient.getLock(lockKey);
 try {
     if (lock.tryLock(10, 30, TimeUnit.SECONDS)) {
-        // 更新余额
-        account.setBalance(account.getBalance().add(amount));
-        accountService.updateById(account);
-        // 创建充值记录
-        rechargeRecordService.save(record);
+        Result result = transactionTemplate.execute(status -> {
+            // 更新余额
+            account.setBalance(account.getBalance().add(amount));
+            accountService.updateById(account);
+            // 创建充值记录
+            rechargeRecordMapper.insert(record);
+            return Result.ok();
+        });
     }
 } finally {
-    lock.unlock();
+    if (lock.isHeldByCurrentThread()) {
+        lock.unlock();
+    }
 }
 ```
 

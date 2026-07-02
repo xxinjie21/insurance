@@ -688,17 +688,17 @@ CREATE TABLE `user` (
 
 ```sql
 CREATE TABLE `settle` (
-  `id` bigint NOT NULL COMMENT '结算ID',
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT '结算ID',
   `visit_id` bigint NOT NULL COMMENT '就诊ID',
   `hospital_id` bigint NOT NULL COMMENT '医院ID',
   `total` decimal(10,2) NOT NULL COMMENT '总金额',
   `reimburse` decimal(10,2) NOT NULL COMMENT '报销金额',
   `self_pay` decimal(10,2) NOT NULL COMMENT '自付金额',
-  `status` tinyint NOT NULL COMMENT '状态：0待申报 1已申报 2已支付 3已拨付',
+  `status` tinyint NOT NULL COMMENT '状态：0待申报 1已申报 2已自付 3已拨付',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_visit_id` (`visit_id`),
-  KEY `idx_hospital_id` (`hospital_id`)
+  UNIQUE KEY `uk_visit_id` (`visit_id`),
+  KEY `fk_settle_hospital` (`hospital_id`)
 );
 ```
 
@@ -800,19 +800,49 @@ public Visit getVisitWithCache(Long visitId) {
 - 空值短 TTL：DB 无记录时缓存空串（1分钟），下一次相同请求命中缓存不再查 DB
 - 无主动失效：依赖 TTL 过期自然淘汰，数据变更不频繁的场景下，30 分钟窗口内短暂不一致可接受
 
-### 8.2 N+1 查询优化（批量查询 + Map 映射）
+### 8.2 N+1 查询优化 — ID 聚合 → 批量加载 → Map 映射
+
+结算单详情接口涉及**结算单 → 就诊 → 患者 → 医院**多级关联，将逐条 `getById()` 重构为：
 
 ```java
-// 错误：N+1查询
-for (BatchItem item : items) {
-    Settle settle = settleService.getById(item.getSettleId()); // N次查询
+// 在 SettleServiceImpl.enrichSettleVOList() 中
+
+// Step 1 — ID 聚合：收集所有 visitId / userId / hospitalId
+Set<Long> visitIds = records.stream()
+    .map(Settle::getVisitId)
+    .filter(Objects::nonNull)
+    .collect(Collectors.toSet());
+
+// Step 2 — 批量加载：缓存命中直接入 Map，未命中 ID 聚合后用 listByIds 一条 IN 查询
+Map<Long, Visit> visitMap = new HashMap<>();
+List<Long> missedVisitIds = new ArrayList<>();
+for (Long id : visitIds) {
+    String json = redisTemplate.opsForValue().get("cache:visit:" + id);
+    if (StrUtil.isNotBlank(json)) {
+        visitMap.put(id, JSON.parseObject(json, Visit.class));  // 缓存命中
+    } else {
+        missedVisitIds.add(id);  // 收集未命中
+    }
+}
+if (!missedVisitIds.isEmpty()) {
+    // 一次 WHERE id IN (...) 批量查询，替代 N 次 getById
+    List<Visit> visitList = visitService.listByIds(missedVisitIds);
+    for (Visit visit : visitList) {
+        visitMap.put(visit.getId(), visit);
+        redisTemplate.opsForValue().set(key, JSON.toJSONString(visit), 30, MINUTES);
+    }
 }
 
-// 正确：批量查询
-Set<Long> settleIds = items.stream().map(BatchItem::getSettleId).collect(Collectors.toSet());
-List<Settle> settleList = settleService.listByIds(settleIds); // 1次查询
-Map<Long, Settle> settleMap = settleList.stream().collect(Collectors.toMap(Settle::getId, Function.identity()));
+// Step 3 — Map 映射：组装 VO 时按 ID 从 Map 取值，O(1)
+for (Settle settle : records) {
+    Visit visit = visitMap.get(settle.getVisitId());  // O(1) Map lookup
+    User user = userMap.get(visit.getUserId());
+    Hospital hospital = hospitalMap.get(settle.getHospitalId());
+    // ... 组装 VO
+}
 ```
+
+**效果**：单次请求 SQL 从 O(N)（N 条结算 × 3 级关联 = 3N+1 次查询）降至常数级（3 条 IN 查询 + N 次缓存命中）。Visit、User、Hospital 三个维度统一采用此模式。
 
 ### 8.3 分页查询优化
 
