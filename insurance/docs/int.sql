@@ -590,3 +590,28 @@ CREATE TABLE `prescription` (
     CONSTRAINT `fk_rx_visit` FOREIGN KEY (`visit_id`) REFERENCES `visit` (`id`),
     CONSTRAINT `fk_rx_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='处方表';
+
+-- ----------------------------
+-- 23. 异地就医备案表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `remote_medical_filing`;
+CREATE TABLE `remote_medical_filing` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id` BIGINT NOT NULL COMMENT '参保人ID',
+    `insured_city` VARCHAR(32) NOT NULL COMMENT '参保地',
+    `treatment_city` VARCHAR(32) NOT NULL COMMENT '就医地',
+    `treatment_hospital_id` BIGINT DEFAULT NULL COMMENT '就医医院ID(不指定则就医地所有定点均可)',
+    `filing_status` TINYINT DEFAULT 1 COMMENT '备案状态：1-已备案 2-已过期 3-已取消',
+    `start_date` DATE NOT NULL COMMENT '生效日期',
+    `end_date` DATE DEFAULT NULL COMMENT '失效日期',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `fk_rmf_user` (`user_id`),
+    KEY `fk_rmf_hospital` (`treatment_hospital_id`),
+    CONSTRAINT `fk_rmf_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`),
+    CONSTRAINT `fk_rmf_hospital` FOREIGN KEY (`treatment_hospital_id`) REFERENCES `hospital` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='异地就医备案表';
+
+-- 异地备案种子数据（张三在南昌参保，备案到南昌市一院）
+INSERT INTO `remote_medical_filing` (`user_id`, `insured_city`, `treatment_city`, `treatment_hospital_id`, `filing_status`, `start_date`, `end_date`, `create_time`) VALUES
+(1, '南昌市', '南昌市', 1, 1, '2026-01-01', '2026-12-31', NOW());

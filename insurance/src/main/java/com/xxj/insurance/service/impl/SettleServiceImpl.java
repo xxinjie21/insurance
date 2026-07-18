@@ -12,12 +12,14 @@ import com.xxj.insurance.common.utils.UserHolder;
 import com.xxj.insurance.domain.po.Fee;
 import com.xxj.insurance.domain.po.Hospital;
 import com.xxj.insurance.domain.po.ReimburseRule;
+import com.xxj.insurance.domain.po.RemoteMedicalFiling;
 import com.xxj.insurance.domain.po.Settle;
 import com.xxj.insurance.domain.po.User;
 import com.xxj.insurance.domain.po.Visit;
 import com.xxj.insurance.domain.po.YearAccumulate;
 import com.xxj.insurance.domain.vo.FeeDetailVO;
 import com.xxj.insurance.domain.vo.SettleVO;
+import com.xxj.insurance.mapper.RemoteMedicalFilingMapper;
 import com.xxj.insurance.mapper.SettleMapper;
 import com.xxj.insurance.mapper.YearAccumulateMapper;
 import com.xxj.insurance.service.IFeeService;
@@ -69,6 +71,7 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
     private final IUserService userService;
     private final IHospitalService hospitalService;
     private final IReimburseRuleService reimburseRuleService;
+    private final RemoteMedicalFilingMapper remoteFilingMapper;
     private final YearAccumulateMapper yearAccumulateMapper;
     private final RedissonClient redissonClient;
     private final StringRedisTemplate redisTemplate;
@@ -191,6 +194,24 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
                 patient.getInsuranceType(), hospital.getLevel(), visit.getType());
         if (rule == null) {
             return Result.fail("未找到匹配的报销规则");
+        }
+
+        // 异地就医校验：参保地 ≠ 医院所在地 需有效备案
+        String insuredCity = patient.getInsuranceCity();
+        if (StrUtil.isNotBlank(insuredCity) && !insuredCity.equals("全市")) {
+            // 简化判断：就医地与参保地比较（生产环境应查医院所在城市）
+            boolean isRemote = hospital.getAddress() != null && !hospital.getAddress().contains(insuredCity);
+            if (isRemote) {
+                LambdaQueryWrapper<RemoteMedicalFiling> filingWrapper = new LambdaQueryWrapper<>();
+                filingWrapper.eq(RemoteMedicalFiling::getUserId, patient.getId())
+                        .eq(RemoteMedicalFiling::getFilingStatus, 1);
+                RemoteMedicalFiling filing = remoteFilingMapper.selectOne(filingWrapper);
+                if (filing == null) {
+                    return Result.fail("异地就医需要提前备案，请先办理异地就医备案");
+                }
+                log.info("异地就医结算，userId:{}, insuredCity:{}, treatmentHospitalId:{}",
+                        patient.getId(), insuredCity, hospital.getId());
+            }
         }
 
         // ---- 报销规则引擎计算 ----

@@ -12,7 +12,7 @@
 | 模块六：门诊/住院流程拓展 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块七：审核规则引擎 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块八：年度管理 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块九：异地就医 | ⬜ 待开始 | - | - |
+| 模块九：异地就医 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十：多层次保障 | ⬜ 待开始 | - | - |
 | 模块十一：退费体系 | ⬜ 待开始 | - | - |
 | 模块十二：医生角色与处方 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
@@ -315,3 +315,30 @@
 - pharmacistId 目前硬编码为1L，需对接登录用户体系
 - 处方审核后发药（status=3）未实现，当前到审核通过即止
 - 前端处方管理UI未实现
+
+---
+
+### 模块九：异地就医 ✅ 2026-07-18
+
+**改动摘要**：新增异地就医备案表 + 备案/查询/取消接口；结算时校验参保地与就医地差异，异地需有效备案方可报销。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| DDL | `int.sql` | 新增 `remote_medical_filing` 表(1条种子) |
+| PO | `RemoteMedicalFiling.java` | **新增**：userId/insuredCity/treatmentCity/treatmentHospitalId/filingStatus/startDate/endDate |
+| Mapper | `RemoteMedicalFilingMapper.java` | **新增** |
+| Service | `IRemoteFilingService` + Impl | **新增**：file(备案 有效期1年)/cancel(取消)/myFilings(查询有效备案) |
+| Controller | `RemoteFilingController.java` | **新增**：POST /remote-filing/file / POST /cancel/{id} / GET /remote-filing/my |
+| Service | `SettleServiceImpl.java` | 注入 RemoteMedicalFilingMapper；executeCalculateWithTransaction 新增异地校验：参保地≠就医地 → 查有效备案 → 无备案拒绝结算 |
+| 前端 | `vo.ts` | 新增 RemoteFilingVO |
+
+**技术点落实**：
+- 备案校验：结算时通过 user.insuranceCity vs hospital.address 判断是否异地；异地则查 remote_medical_filing(filingStatus=1)；无有效备案直接拒绝
+- 报销规则：异地结算仍使用参保地规则（user.insuranceType），即"参保地政策"
+- 备案生命周期：备案后有效期1年；可主动取消(status=3)；过期(status=2)需重新备案
+
+**遗漏风险**：
+- 医院城市判定当前用地址字符串简化匹配，生产环境需 hospital.city 字段
+- "就医地目录"模式（目录采用就医地、报销参数用参保地）未实现，当前全用参保地规则

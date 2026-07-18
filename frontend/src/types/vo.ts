@@ -271,6 +271,19 @@ export interface InpatientVO {
   createTime?: string
 }
 
+// 异地就医备案
+export interface RemoteFilingVO {
+  id: string
+  userId: string
+  insuredCity: string
+  treatmentCity: string
+  treatmentHospitalId?: string
+  filingStatus: number
+  startDate: string
+  endDate?: string
+  createTime?: string
+}
+
 // 费用录入表单（含目录选择）
 export interface FeeAddForm {
   visitId: string
