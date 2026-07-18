@@ -179,3 +179,53 @@ export interface UserAccountVO {
   createTime?: string
   updateTime?: string
 }
+
+// 药品目录
+export interface DrugCatalogVO {
+  id: string
+  code: string
+  name: string
+  specification?: string
+  manufacturer?: string
+  category: number
+  selfPayRatio?: number
+  remark?: string
+}
+
+// 诊疗目录
+export interface TreatmentCatalogVO {
+  id: string
+  code: string
+  name: string
+  projectType?: string
+  category: number
+  unitPriceCap?: number
+  remark?: string
+}
+
+// 耗材目录
+export interface ConsumableCatalogVO {
+  id: string
+  code: string
+  name: string
+  specification?: string
+  category: number
+  limitAmount?: number
+  remark?: string
+}
+
+// 费用录入表单（含目录选择）
+export interface FeeAddForm {
+  visitId: string
+  name?: string
+  type?: number
+  price: number
+  num: number
+  insuranceCode?: string
+  specification?: string
+  usageMethod?: string
+  /** 目录类型：drug/treatment/consumable */
+  catalogType?: string
+  /** 目录项ID */
+  catalogId?: string
+}

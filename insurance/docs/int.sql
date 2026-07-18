@@ -339,3 +339,95 @@ CREATE TABLE `year_accumulate` (
     UNIQUE KEY `uk_user_year` (`user_id`, `year`),
     CONSTRAINT `fk_accumulate_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='参保人年度累计表';
+
+-- ----------------------------
+-- 14. 药品目录表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `drug_catalog`;
+CREATE TABLE `drug_catalog` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `code` VARCHAR(32) NOT NULL COMMENT '医保药品编码',
+    `name` VARCHAR(128) NOT NULL COMMENT '药品通用名',
+    `specification` VARCHAR(64) DEFAULT NULL COMMENT '规格',
+    `manufacturer` VARCHAR(128) DEFAULT NULL COMMENT '生产厂家',
+    `category` TINYINT NOT NULL COMMENT '甲乙分类：1-甲类 2-乙类 3-自费',
+    `self_pay_ratio` DECIMAL(4,3) DEFAULT 0.000 COMMENT '乙类自付比例(仅乙类有效)',
+    `remark` VARCHAR(255) DEFAULT NULL COMMENT '备注（限制使用范围等）',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='药品目录表';
+
+-- 药品目录种子数据
+INSERT INTO `drug_catalog` (`code`, `name`, `specification`, `manufacturer`, `category`, `self_pay_ratio`, `remark`) VALUES
+('XL01AA01', '阿莫西林胶囊', '0.5g*24粒', '华北制药', 1, 0.000, NULL),
+('XL01AA02', '头孢克洛胶囊', '0.25g*12粒', '广州白云山', 1, 0.000, NULL),
+('XL02BB01', '硝苯地平缓释片', '30mg*7片', '拜耳医药', 2, 0.200, NULL),
+('XL02BB02', '氨氯地平片', '5mg*7片', '辉瑞制药', 2, 0.200, NULL),
+('XL02BB03', '厄贝沙坦片', '150mg*7片', '赛诺菲', 2, 0.200, NULL),
+('XL03CC01', '阿托伐他汀钙片', '20mg*7片', '辉瑞制药', 2, 0.250, '限高胆固醇血症'),
+('XL03CC02', '瑞舒伐他汀钙片', '10mg*7片', '阿斯利康', 2, 0.250, '限高胆固醇血症'),
+('XL04DD01', '奥司他韦胶囊', '75mg*10粒', '罗氏制药', 2, 0.200, '限流感重症'),
+('XL05EE01', '布洛芬缓释胶囊', '0.3g*20粒', '中美史克', 1, 0.000, NULL),
+('XL05EE02', '对乙酰氨基酚片', '0.5g*12片', '强生制药', 1, 0.000, NULL),
+('XL06FF01', '胰岛素注射液', '400IU/10ml', '诺和诺德', 1, 0.000, '限糖尿病患者'),
+('XL07GG01', '甲钴胺片', '0.5mg*20片', '卫材药业', 2, 0.100, NULL);
+
+-- ----------------------------
+-- 15. 诊疗项目目录表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `treatment_catalog`;
+CREATE TABLE `treatment_catalog` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `code` VARCHAR(32) NOT NULL COMMENT '诊疗项目编码',
+    `name` VARCHAR(128) NOT NULL COMMENT '项目名称',
+    `project_type` VARCHAR(32) DEFAULT NULL COMMENT '项目类别：检查/检验/手术/治疗/护理',
+    `category` TINYINT NOT NULL COMMENT '甲乙分类：1-甲类 2-乙类 3-自费',
+    `unit_price_cap` DECIMAL(10,2) DEFAULT NULL COMMENT '单价上限',
+    `remark` VARCHAR(255) DEFAULT NULL COMMENT '备注',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_code_t` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='诊疗项目目录表';
+
+-- 诊疗项目种子数据
+INSERT INTO `treatment_catalog` (`code`, `name`, `project_type`, `category`, `unit_price_cap`, `remark`) VALUES
+('ZL250101', '血常规检查', '检验', 1, 25.00, NULL),
+('ZL250102', '尿常规检查', '检验', 1, 15.00, NULL),
+('ZL250103', '肝功能全套', '检验', 1, 80.00, NULL),
+('ZL250104', '肾功能检查', '检验', 1, 60.00, NULL),
+('ZL250201', '胸部X线摄影', '检查', 1, 50.00, NULL),
+('ZL250301', '心电图检查', '检查', 1, 40.00, NULL),
+('ZL250302', '动态心电图', '检查', 2, 200.00, NULL),
+('ZL250401', '腹部B超', '检查', 1, 120.00, NULL),
+('ZL250501', '胃镜检查', '检查', 2, 300.00, NULL),
+('ZL250502', '肠镜检查', '检查', 2, 400.00, NULL),
+('ZL250601', '普通门诊诊查费', '诊查', 1, 15.00, NULL),
+('ZL250602', '专家门诊诊查费', '诊查', 2, 30.00, '限副主任医师以上'),
+('ZL250701', '一级护理', '护理', 1, 20.00, NULL),
+('ZL250702', '二级护理', '护理', 1, 12.00, NULL),
+('ZL250801', '清创缝合（小）', '手术', 1, 80.00, NULL),
+('ZL250802', '清创缝合（中）', '手术', 1, 150.00, NULL);
+
+-- ----------------------------
+-- 16. 耗材目录表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `consumable_catalog`;
+CREATE TABLE `consumable_catalog` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `code` VARCHAR(32) NOT NULL COMMENT '耗材编码',
+    `name` VARCHAR(128) NOT NULL COMMENT '耗材名称',
+    `specification` VARCHAR(64) DEFAULT NULL COMMENT '规格',
+    `category` TINYINT NOT NULL COMMENT '甲乙分类：1-甲类 2-乙类 3-自费',
+    `limit_amount` DECIMAL(10,2) DEFAULT NULL COMMENT '限额（超出部分自费）',
+    `remark` VARCHAR(255) DEFAULT NULL COMMENT '备注',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_code_c` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='耗材目录表';
+
+-- 耗材目录种子数据
+INSERT INTO `consumable_catalog` (`code`, `name`, `specification`, `category`, `limit_amount`, `remark`) VALUES
+('HC00101', '一次性输液器', '带针', 1, 2.00, NULL),
+('HC00102', '一次性注射器', '5ml', 1, 1.00, NULL),
+('HC00103', '无菌纱布块', '8cm*10cm', 1, 0.50, NULL),
+('HC00201', '血糖试纸', '50条/盒', 2, 100.00, '限糖尿病患者'),
+('HC00202', '一次性导尿管', '双腔16Fr', 2, 15.00, NULL),
+('HC00301', '人工髋关节', '陶瓷', 3, NULL, '高值耗材，按比例报销');

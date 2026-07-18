@@ -6,7 +6,7 @@
 |------|------|---------|---------|
 | 模块一：基础数据完善 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块二：报销计算引擎重构 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块三：医保目录体系 | ⬜ 待开始 | - | - |
+| 模块三：医保目录体系 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块四：结算单支付拆分 | ⬜ 待开始 | - | - |
 | 模块五：支付流程改造 | ⬜ 待开始 | - | - |
 | 模块六：门诊/住院流程拓展 | ⬜ 待开始 | - | - |
@@ -97,3 +97,38 @@
 **遗漏风险**：
 - 前端未暴露 reimburse_rule 管理界面，规则变更需直接操作数据库（后续模块可按需加）
 - UserAccountServiceImpl.pay() 仍从自建账户扣款，模块四/五会改造为使用 user.personal_account_balance
+
+---
+
+### 模块三：医保目录体系 ✅ 2026-07-18
+
+**改动摘要**：引入药品/诊疗/耗材三大标准目录，费用录入从自由文本→标准目录选择+自动回填。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| DDL | `insurance/docs/int.sql` | 新增 `drug_catalog` 表(12条种子数据) + `treatment_catalog` 表(16条) + `consumable_catalog` 表(6条) |
+| PO | `domain/po/DrugCatalog.java` | **新增**：code/name/specification/manufacturer/category/selfPayRatio/remark |
+| PO | `domain/po/TreatmentCatalog.java` | **新增**：code/name/projectType/category/unitPriceCap/remark |
+| PO | `domain/po/ConsumableCatalog.java` | **新增**：code/name/specification/category/limitAmount/remark |
+| Mapper | `mapper/DrugCatalogMapper.java` | **新增** |
+| Mapper | `mapper/TreatmentCatalogMapper.java` | **新增** |
+| Mapper | `mapper/ConsumableCatalogMapper.java` | **新增** |
+| Service | `service/ICatalogService.java` | **新增**：drugList/treatmentList/consumableList(分页+模糊搜索) + getById |
+| Service | `service/impl/CatalogServiceImpl.java` | **新增**：按name/code模糊搜索，默认20条/页 |
+| Controller | `controller/CatalogController.java` | **新增** 3个GET接口：/catalog/{drug\|treatment\|consumable}/list?keyword= |
+| DTO | `domain/dto/FeeAddDTO.java` | +catalogType(String) +catalogId(Long) 可选字段 |
+| Service | `service/impl/FeeServiceImpl.java` | 注入ICatalogService；executeBatchAddWithTransaction 新增 fillFromCatalog()：选目录时根据catalogType查询→自动回填name/type/insuranceCode/specification |
+| 前端 | `frontend/src/types/vo.ts` | 新增 DrugCatalogVO/TreatmentCatalogVO/ConsumableCatalogVO/FeeAddForm 类型 |
+
+**技术点落实**：
+- 目录查询：ICatalogService 按编码/名称/规格三字段模糊搜索，支持分页
+- 目录回填：FeeAddDTO.catalogId + catalogType("drug"\"treatment"\"consumable") → FeeServiceImpl.fillFromCatalog() 自动查目录回填 name/type/insuranceCode/specification；查询失败不阻塞，fallback 使用手动录入值
+- 兼容模式：不传 catalogId 时保持原有自由文本录入流程，catalogId 为可选字段
+- BeanUtils.copyProperties：FeeAddDTO→Fee PO 自动携带回填后的字段
+- @Permission 注解：目录查询接口限医院/医保局/管理员角色访问
+
+**遗漏风险**：
+- Excel/CSV批量导入接口暂未实现（目录种子数据已覆盖常用项目，按需再加）
+- 目录管理CRUD（增删改）未暴露前端接口，种子数据变更需直接操作数据库

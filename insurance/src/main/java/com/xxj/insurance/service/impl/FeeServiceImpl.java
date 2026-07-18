@@ -8,11 +8,15 @@ import com.xxj.insurance.common.domain.Result;
 import com.xxj.insurance.common.enums.Role;
 import com.xxj.insurance.common.utils.UserHolder;
 import com.xxj.insurance.domain.dto.FeeAddDTO;
+import com.xxj.insurance.domain.po.ConsumableCatalog;
+import com.xxj.insurance.domain.po.DrugCatalog;
+import com.xxj.insurance.domain.po.TreatmentCatalog;
 import com.xxj.insurance.domain.po.Fee;
 import com.xxj.insurance.domain.po.Hospital;
 import com.xxj.insurance.domain.po.Visit;
 import com.xxj.insurance.domain.vo.FeeVO;
 import com.xxj.insurance.mapper.FeeMapper;
+import com.xxj.insurance.service.ICatalogService;
 import com.xxj.insurance.service.IFeeService;
 import com.xxj.insurance.service.IHospitalService;
 import com.xxj.insurance.service.IVisitService;
@@ -55,6 +59,8 @@ public class FeeServiceImpl extends ServiceImpl<FeeMapper, Fee> implements IFeeS
     private final IVisitService visitService;
     // 医院服务
     private final IHospitalService hospitalService;
+    // 目录服务
+    private final ICatalogService catalogService;
     // 编程式事务
     private final TransactionTemplate transactionTemplate;
     // Redis（读取角色）
@@ -156,6 +162,13 @@ public class FeeServiceImpl extends ServiceImpl<FeeMapper, Fee> implements IFeeS
             // 费用类型 1~3 有效
             if (dto.getType() == null || dto.getType() < 1 || dto.getType() > 3) {
                 return Result.fail("费用类型无效");
+            }
+        }
+
+        // 选目录时回填名称/类型/编码/规格
+        for (FeeAddDTO dto : dtoList) {
+            if (dto.getCatalogId() != null && dto.getCatalogType() != null) {
+                fillFromCatalog(dto);
             }
         }
 
@@ -374,5 +387,41 @@ public class FeeServiceImpl extends ServiceImpl<FeeMapper, Fee> implements IFeeS
         // 执行删除
         removeById(feeId);
         return Result.ok("删除成功");
+    }
+
+    /**
+     * 从目录回填费用信息：名称、类别、医保编码、规格
+     */
+    private void fillFromCatalog(FeeAddDTO dto) {
+        try {
+            Long catalogId = dto.getCatalogId();
+            String catalogType = dto.getCatalogType();
+            if ("drug".equals(catalogType)) {
+                DrugCatalog drug = catalogService.getDrugById(catalogId);
+                if (drug != null) {
+                    dto.setName(drug.getName());
+                    dto.setType(drug.getCategory());
+                    dto.setInsuranceCode(drug.getCode());
+                    dto.setSpecification(drug.getSpecification());
+                }
+            } else if ("treatment".equals(catalogType)) {
+                TreatmentCatalog treatment = catalogService.getTreatmentById(catalogId);
+                if (treatment != null) {
+                    dto.setName(treatment.getName());
+                    dto.setType(treatment.getCategory());
+                    dto.setInsuranceCode(treatment.getCode());
+                }
+            } else if ("consumable".equals(catalogType)) {
+                ConsumableCatalog consumable = catalogService.getConsumableById(catalogId);
+                if (consumable != null) {
+                    dto.setName(consumable.getName());
+                    dto.setType(consumable.getCategory());
+                    dto.setInsuranceCode(consumable.getCode());
+                    dto.setSpecification(consumable.getSpecification());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("目录回填失败，使用手动录入值：catalogType={} catalogId={}", dto.getCatalogType(), dto.getCatalogId(), e);
+        }
     }
 }

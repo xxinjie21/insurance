@@ -34,4 +34,10 @@ public class FeeAddDTO {
 
     /** 用法用量 */
     private String usageMethod;
+
+    /** 目录类型：drug/treatment/consumable（选目录时传入） */
+    private String catalogType;
+
+    /** 目录项ID（选目录时传入，后端自动回填名称/类型/编码/规格） */
+    private Long catalogId;
 }
