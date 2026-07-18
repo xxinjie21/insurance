@@ -11,13 +11,17 @@ import com.xxj.insurance.common.enums.Role;
 import com.xxj.insurance.common.utils.UserHolder;
 import com.xxj.insurance.domain.po.Fee;
 import com.xxj.insurance.domain.po.Hospital;
+import com.xxj.insurance.domain.po.ReimburseRule;
 import com.xxj.insurance.domain.po.Settle;
 import com.xxj.insurance.domain.po.User;
 import com.xxj.insurance.domain.po.Visit;
+import com.xxj.insurance.domain.po.YearAccumulate;
 import com.xxj.insurance.domain.vo.SettleVO;
 import com.xxj.insurance.mapper.SettleMapper;
+import com.xxj.insurance.mapper.YearAccumulateMapper;
 import com.xxj.insurance.service.IFeeService;
 import com.xxj.insurance.service.IHospitalService;
+import com.xxj.insurance.service.IReimburseRuleService;
 import com.xxj.insurance.service.ISettleService;
 import com.xxj.insurance.service.IUserService;
 import com.xxj.insurance.service.IVisitService;
@@ -63,6 +67,8 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
     private final IVisitService visitService;
     private final IUserService userService;
     private final IHospitalService hospitalService;
+    private final IReimburseRuleService reimburseRuleService;
+    private final YearAccumulateMapper yearAccumulateMapper;
     private final RedissonClient redissonClient;
     private final StringRedisTemplate redisTemplate;
     private final TransactionTemplate transactionTemplate;
@@ -167,40 +173,122 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
             return Result.fail("该就诊暂无费用明细");
         }
 
-        // 按费用类型分别计算报销金额
+        // 获取患者参保信息
+        User patient = userService.getById(visit.getUserId());
+        if (patient == null || patient.getInsuranceType() == null) {
+            return Result.fail("患者参保信息不完整，无法结算");
+        }
+
+        // 获取医院等级
+        Hospital hospital = hospitalService.getById(visit.getHospitalId());
+        if (hospital == null || hospital.getLevel() == null) {
+            return Result.fail("医院等级信息缺失，无法结算");
+        }
+
+        // 查询报销规则
+        ReimburseRule rule = reimburseRuleService.findRule(
+                patient.getInsuranceType(), hospital.getLevel(), visit.getType());
+        if (rule == null) {
+            return Result.fail("未找到匹配的报销规则");
+        }
+
+        // ---- 报销规则引擎计算 ----
+
         BigDecimal totalAmount = BigDecimal.ZERO;
-        BigDecimal reimburseAmountRaw = BigDecimal.ZERO;
+        BigDecimal catBSelfPayTotal = BigDecimal.ZERO; // 乙类先自付总额
+        BigDecimal totalA = BigDecimal.ZERO;  // 甲类总额
+        BigDecimal totalC = BigDecimal.ZERO;  // 自费类总额
 
         for (Fee fee : feeList) {
             if (fee.getTotal() == null) {
                 continue;
             }
             totalAmount = totalAmount.add(fee.getTotal());
-            BigDecimal rate = getReimburseRate(fee.getType());
-            BigDecimal reimburse = fee.getTotal().multiply(rate);
-            reimburseAmountRaw = reimburseAmountRaw.add(reimburse);
+
+            // 乙类药先自付 category_b_self_ratio，剩余进入报销计算
+            if (fee.getType() != null && fee.getType() == 2) {
+                BigDecimal selfPart = fee.getTotal().multiply(rule.getCategoryBSelfRatio());
+                catBSelfPayTotal = catBSelfPayTotal.add(selfPart);
+            }
+            if (fee.getType() != null && fee.getType() == 1) {
+                totalA = totalA.add(fee.getTotal());
+            }
+            if (fee.getType() != null && fee.getType() == 3) {
+                totalC = totalC.add(fee.getTotal());
+            }
         }
 
-        // 四舍五入保留 2 位小数
-        BigDecimal reimburseAmount = reimburseAmountRaw.setScale(2, RoundingMode.HALF_UP);
-        BigDecimal selfPayAmount = totalAmount.subtract(reimburseAmount).setScale(2, RoundingMode.HALF_UP);
+        // 可报销基数 = 总费用 - 乙类先自付 - 自费类
+        BigDecimal reimbursableBase = totalAmount.subtract(catBSelfPayTotal).subtract(totalC);
 
-        // 保存结算记录（未申报状态）
+        // 起付线计算（年度累计维度）
+        int currentYear = LocalDateTime.now().getYear();
+        YearAccumulate accumulate = getOrCreateYearAccumulate(visit.getUserId(), currentYear);
+        BigDecimal deductibleRemaining = rule.getDeductible().subtract(accumulate.getDeductibleUsed());
+        if (deductibleRemaining.compareTo(BigDecimal.ZERO) < 0) {
+            deductibleRemaining = BigDecimal.ZERO;
+        }
+
+        // 实际本次可报销金额 = max(0, 可报销基数 - 剩余起付线)
+        BigDecimal actualReimbursable = reimbursableBase.subtract(deductibleRemaining);
+        if (actualReimbursable.compareTo(BigDecimal.ZERO) < 0) {
+            actualReimbursable = BigDecimal.ZERO;
+        }
+
+        // 统筹支付 = 实际可报销金额 × 报销比例
+        BigDecimal poolingPay = actualReimbursable.multiply(rule.getReimburseRatio());
+
+        // 封顶线校验
+        BigDecimal capRemaining = rule.getAnnualCap().subtract(accumulate.getPoolingTotal());
+        if (poolingPay.compareTo(capRemaining) > 0) {
+            poolingPay = capRemaining;
+        }
+        if (poolingPay.compareTo(BigDecimal.ZERO) < 0) {
+            poolingPay = BigDecimal.ZERO;
+        }
+        poolingPay = poolingPay.setScale(2, RoundingMode.HALF_UP);
+
+        // 实际消耗的起付线 = min(剩余起付线, 可报销基数)
+        BigDecimal deductibleConsumed = reimbursableBase.compareTo(deductibleRemaining) < 0
+                ? reimbursableBase : deductibleRemaining;
+        if (deductibleConsumed.compareTo(BigDecimal.ZERO) < 0) {
+            deductibleConsumed = BigDecimal.ZERO;
+        }
+        deductibleConsumed = deductibleConsumed.setScale(2, RoundingMode.HALF_UP);
+
+        // 个人账户支付：优先使用个人账户余额
+        BigDecimal selfPayTotal = totalAmount.subtract(poolingPay).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal accountBalance = patient.getPersonalAccountBalance() != null
+                ? patient.getPersonalAccountBalance() : BigDecimal.ZERO;
+        BigDecimal accountPay = selfPayTotal.compareTo(accountBalance) <= 0
+                ? selfPayTotal : accountBalance;
+        accountPay = accountPay.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal cashPay = selfPayTotal.subtract(accountPay).setScale(2, RoundingMode.HALF_UP);
+
+        // 更新年度累计
+        accumulate.setDeductibleUsed(accumulate.getDeductibleUsed().add(deductibleConsumed));
+        accumulate.setPoolingTotal(accumulate.getPoolingTotal().add(poolingPay));
+        yearAccumulateMapper.updateById(accumulate);
+
+        // 保存结算记录
         Settle settle = new Settle();
         settle.setVisitId(visitId);
         settle.setHospitalId(visit.getHospitalId());
         settle.setTotal(totalAmount);
-        settle.setReimburse(reimburseAmount);
-        settle.setSelfPay(selfPayAmount);
+        settle.setReimburse(poolingPay);  // reimburse 保持为统筹支付金额
+        settle.setSelfPay(selfPayTotal);
+        settle.setPoolingPay(poolingPay);
+        settle.setAccountPay(accountPay);
+        settle.setCashPay(cashPay);
         settle.setStatus(ReimburseConstants.SETTLE_STATUS_UNDECLARED);
         settle.setCreateTime(LocalDateTime.now());
         this.save(settle);
 
         // 就诊状态不变，等患者付款结算后再更新为"已结算"
 
-
         // 注意：幂等标记和缓存删除已移到事务提交后
-        log.info("结算成功，就诊ID:{}, 结算ID:{}", visitId, settle.getId());
+        log.info("结算成功，就诊ID:{}, 结算ID:{}, 统筹支付:{}, 个账支付:{}, 现金支付:{}",
+                visitId, settle.getId(), poolingPay, accountPay, cashPay);
         return Result.ok(settle);
     }
 
@@ -232,17 +320,23 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         return Result.ok(voList.isEmpty() ? null : voList.get(0));
     }
 
-    // 根据费用类型获取报销比例
-    private BigDecimal getReimburseRate(Integer type) {
-        if (type == null) return ReimburseConstants.CATEGORY_C_RATE;
-        switch (type) {
-            case 1:
-                return ReimburseConstants.CATEGORY_A_RATE;
-            case 2:
-                return ReimburseConstants.CATEGORY_B_RATE;
-            default:
-                return ReimburseConstants.CATEGORY_C_RATE;
+    // 查询或创建年度累计记录
+    private YearAccumulate getOrCreateYearAccumulate(Long userId, int year) {
+        LambdaQueryWrapper<YearAccumulate> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(YearAccumulate::getUserId, userId)
+               .eq(YearAccumulate::getYear, year);
+        YearAccumulate accumulate = yearAccumulateMapper.selectOne(wrapper);
+        if (accumulate == null) {
+            accumulate = new YearAccumulate();
+            accumulate.setUserId(userId);
+            accumulate.setYear(year);
+            accumulate.setDeductibleUsed(BigDecimal.ZERO);
+            accumulate.setPoolingTotal(BigDecimal.ZERO);
+            accumulate.setCreateTime(LocalDateTime.now());
+            accumulate.setUpdateTime(LocalDateTime.now());
+            yearAccumulateMapper.insert(accumulate);
         }
+        return accumulate;
     }
 
     // 查就诊（Redis 缓存，防缓存穿透）

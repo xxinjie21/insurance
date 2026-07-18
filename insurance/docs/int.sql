@@ -275,3 +275,67 @@ CREATE TABLE `consumption_record` (
 -- 初始化患者账户数据（为已有患者创建账户）
 INSERT INTO `user_account` (`user_id`, `balance`, `total_recharge`, `total_consumption`, `status`)
 SELECT id, 0.00, 0.00, 0.00, 1 FROM `user` WHERE `role` = 1;
+
+-- ----------------------------
+-- 12. 报销规则表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `reimburse_rule`;
+CREATE TABLE `reimburse_rule` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `insurance_type` TINYINT NOT NULL COMMENT '参保类型：1-职工 2-居民',
+    `hospital_level` TINYINT NOT NULL COMMENT '医院等级：1-三甲 2-三乙 3-二甲 4-二乙 5-一级 6-社区',
+    `visit_type` TINYINT NOT NULL COMMENT '就诊类型：1-门诊 2-住院',
+    `deductible` DECIMAL(10,2) NOT NULL DEFAULT 0.00 COMMENT '起付线',
+    `reimburse_ratio` DECIMAL(4,3) NOT NULL COMMENT '统筹报销比例(0~1)',
+    `annual_cap` DECIMAL(12,2) NOT NULL COMMENT '年度封顶线',
+    `category_b_self_ratio` DECIMAL(4,3) NOT NULL DEFAULT 0.200 COMMENT '乙类先自付比例(0~1)',
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='医保报销规则表';
+
+-- 报销规则种子数据（南昌市为例）
+INSERT INTO `reimburse_rule` (`insurance_type`, `hospital_level`, `visit_type`, `deductible`, `reimburse_ratio`, `annual_cap`, `category_b_self_ratio`) VALUES
+-- 职工医保 门诊
+(1, 1, 1, 300.00, 0.550, 2000.00, 0.200),   -- 三甲门诊：起付300 报销55% 封顶2000
+(1, 2, 1, 300.00, 0.600, 2000.00, 0.200),   -- 三乙门诊
+(1, 3, 1, 200.00, 0.650, 2000.00, 0.200),   -- 二甲门诊
+(1, 4, 1, 200.00, 0.650, 2000.00, 0.200),   -- 二乙门诊
+(1, 5, 1, 100.00, 0.700, 2000.00, 0.200),   -- 一级门诊
+(1, 6, 1, 0.00,   0.750, 2000.00, 0.200),   -- 社区门诊：0起付 报销75%
+-- 职工医保 住院
+(1, 1, 2, 800.00, 0.850, 300000.00, 0.200),  -- 三甲住院：起付800 报销85% 封顶30万
+(1, 2, 2, 800.00, 0.850, 300000.00, 0.200),
+(1, 3, 2, 500.00, 0.880, 300000.00, 0.200),
+(1, 4, 2, 500.00, 0.880, 300000.00, 0.200),
+(1, 5, 2, 300.00, 0.900, 300000.00, 0.200),
+(1, 6, 2, 200.00, 0.920, 300000.00, 0.200),
+-- 居民医保 门诊
+(2, 1, 1, 200.00, 0.500, 800.00,  0.200),   -- 三甲门诊：起付200 报销50% 封顶800
+(2, 2, 1, 200.00, 0.500, 800.00,  0.200),
+(2, 3, 1, 100.00, 0.550, 800.00,  0.200),
+(2, 4, 1, 100.00, 0.550, 800.00,  0.200),
+(2, 5, 1, 0.00,   0.600, 800.00,  0.200),
+(2, 6, 1, 0.00,   0.650, 800.00,  0.200),
+-- 居民医保 住院
+(2, 1, 2, 600.00, 0.750, 150000.00, 0.200),  -- 三甲住院：起付600 报销75% 封顶15万
+(2, 2, 2, 600.00, 0.750, 150000.00, 0.200),
+(2, 3, 2, 400.00, 0.800, 150000.00, 0.200),
+(2, 4, 2, 400.00, 0.800, 150000.00, 0.200),
+(2, 5, 2, 200.00, 0.850, 150000.00, 0.200),
+(2, 6, 2, 100.00, 0.880, 150000.00, 0.200);
+
+-- ----------------------------
+-- 13. 年度累计表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `year_accumulate`;
+CREATE TABLE `year_accumulate` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id` BIGINT NOT NULL COMMENT '参保人ID',
+    `year` INT NOT NULL COMMENT '年份',
+    `deductible_used` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '本年度已累计起付线金额',
+    `pooling_total` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '本年度统筹支付累计',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_user_year` (`user_id`, `year`),
+    CONSTRAINT `fk_accumulate_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='参保人年度累计表';
