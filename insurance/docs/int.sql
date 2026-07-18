@@ -668,3 +668,21 @@ CREATE TABLE `refund` (
     CONSTRAINT `fk_refund_settle` FOREIGN KEY (`settle_id`) REFERENCES `settle` (`id`),
     CONSTRAINT `fk_refund_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款表';
+
+-- ----------------------------
+-- 26. 操作日志表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `operation_log`;
+CREATE TABLE `operation_log` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id` BIGINT DEFAULT NULL COMMENT '操作用户ID',
+    `operation` VARCHAR(128) NOT NULL COMMENT '操作描述',
+    `method` VARCHAR(256) DEFAULT NULL COMMENT '请求方法',
+    `params` TEXT DEFAULT NULL COMMENT '请求参数',
+    `result` VARCHAR(512) DEFAULT NULL COMMENT '执行结果摘要',
+    `duration_ms` BIGINT DEFAULT NULL COMMENT '耗时(毫秒)',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_op_user` (`user_id`),
+    KEY `idx_op_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
