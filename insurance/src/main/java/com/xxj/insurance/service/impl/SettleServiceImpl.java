@@ -11,6 +11,7 @@ import com.xxj.insurance.common.enums.Role;
 import com.xxj.insurance.common.utils.UserHolder;
 import com.xxj.insurance.domain.po.Fee;
 import com.xxj.insurance.domain.po.Hospital;
+import com.xxj.insurance.domain.po.ChronicDiseaseCert;
 import com.xxj.insurance.domain.po.ReimburseRule;
 import com.xxj.insurance.domain.po.RemoteMedicalFiling;
 import com.xxj.insurance.domain.po.Settle;
@@ -287,7 +288,36 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         accountPay = accountPay.setScale(2, RoundingMode.HALF_UP);
         BigDecimal cashPay = selfPayTotal.subtract(accountPay).setScale(2, RoundingMode.HALF_UP);
 
-        // 更新年度累计
+        // ---- 大病保险二次报销 ----
+        BigDecimal catastrophicPay = BigDecimal.ZERO;
+        if (capRemaining.compareTo(BigDecimal.ZERO) <= 0) {
+            // 基本医保封顶线已用完，进入大病保险
+            BigDecimal catastrophicRatio = new BigDecimal("0.60");
+            BigDecimal catastrophicCap = new BigDecimal("300000.00");
+            BigDecimal catastrophicRemaining = catastrophicCap.subtract(accumulate.getPoolingTotal());
+            if (catastrophicRemaining.compareTo(BigDecimal.ZERO) <= 0) {
+                catastrophicRemaining = BigDecimal.ZERO;
+            }
+            BigDecimal catastrophicCalc = cashPay.multiply(catastrophicRatio);
+            catastrophicPay = catastrophicCalc.compareTo(catastrophicRemaining) > 0
+                    ? catastrophicRemaining : catastrophicCalc;
+            catastrophicPay = catastrophicPay.setScale(2, RoundingMode.HALF_UP);
+            cashPay = cashPay.subtract(catastrophicPay).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        // ---- 医疗救助 ----
+        BigDecimal assistancePay = BigDecimal.ZERO;
+        if (patient.getMedicalAssistance() != null && patient.getMedicalAssistance() == 1
+                && cashPay.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal assistanceRatio = new BigDecimal("0.70");
+            BigDecimal assistanceCap = new BigDecimal("10000.00");
+            BigDecimal assistanceCalc = cashPay.multiply(assistanceRatio);
+            assistancePay = assistanceCalc.compareTo(assistanceCap) > 0 ? assistanceCap : assistanceCalc;
+            assistancePay = assistancePay.setScale(2, RoundingMode.HALF_UP);
+            cashPay = cashPay.subtract(assistancePay).setScale(2, RoundingMode.HALF_UP);
+        }
+
+        // 更新年度累计（统筹+大病合并计入）
         accumulate.setDeductibleUsed(accumulate.getDeductibleUsed().add(deductibleConsumed));
         accumulate.setPoolingTotal(accumulate.getPoolingTotal().add(poolingPay));
         yearAccumulateMapper.updateById(accumulate);
@@ -302,6 +332,8 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         settle.setPoolingPay(poolingPay);
         settle.setAccountPay(accountPay);
         settle.setCashPay(cashPay);
+        settle.setCatastrophicPay(catastrophicPay);
+        settle.setAssistancePay(assistancePay);
         settle.setStatus(ReimburseConstants.SETTLE_STATUS_UNDECLARED);
         settle.setCreateTime(LocalDateTime.now());
         this.save(settle);
@@ -309,8 +341,8 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         // 就诊状态不变，等患者付款结算后再更新为"已结算"
 
         // 注意：幂等标记和缓存删除已移到事务提交后
-        log.info("结算成功，就诊ID:{}, 结算ID:{}, 统筹支付:{}, 个账支付:{}, 现金支付:{}",
-                visitId, settle.getId(), poolingPay, accountPay, cashPay);
+        log.info("结算成功，就诊ID:{}, 结算ID:{}, 统筹:{}, 大病:{}, 救助:{}, 个账:{}, 现金:{}",
+                visitId, settle.getId(), poolingPay, catastrophicPay, assistancePay, accountPay, cashPay);
         return Result.ok(settle);
     }
 

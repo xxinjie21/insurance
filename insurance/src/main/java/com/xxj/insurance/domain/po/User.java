@@ -62,6 +62,9 @@ public class User implements Serializable {
      */
     private java.math.BigDecimal personalAccountBalance;
 
+    /** 医疗救助标记：0-否 1-是(低保/特困) */
+    private Integer medicalAssistance;
+
     private LocalDateTime createTime;
 
 

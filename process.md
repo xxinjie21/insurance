@@ -13,7 +13,7 @@
 | 模块七：审核规则引擎 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块八：年度管理 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块九：异地就医 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块十：多层次保障 | ⬜ 待开始 | - | - |
+| 模块十：多层次保障 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十一：退费体系 | ⬜ 待开始 | - | - |
 | 模块十二：医生角色与处方 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十三：报表与导出 | ⬜ 待开始 | - | - |
@@ -342,3 +342,39 @@
 **遗漏风险**：
 - 医院城市判定当前用地址字符串简化匹配，生产环境需 hospital.city 字段
 - "就医地目录"模式（目录采用就医地、报销参数用参保地）未实现，当前全用参保地规则
+
+---
+
+### 模块十：多层次保障 ✅ 2026-07-18
+
+**改动摘要**：新增门诊慢特病认定 + 大病保险二次报销 + 医疗救助三层保障，结算引擎扩展为四层报销计算。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| DDL | `int.sql` | 新增 `chronic_disease_cert` 表(1条种子)；user ALTER ADD medical_assistance；settle ALTER ADD catastrophic_pay + assistance_pay |
+| PO | `ChronicDiseaseCert.java` | **新增** |
+| PO | `User.java` | +medicalAssistance(Integer) |
+| PO | `Settle.java` | +catastrophicPay +assistancePay |
+| Mapper | `ChronicDiseaseCertMapper.java` | **新增** |
+| VO | `SettleVO.java` | +catastrophicPay +assistancePay |
+| Service | `SettleServiceImpl.java` | 引擎扩展：基本统筹后自动判断封顶→大病保险60%报销(上限30万)→医疗救助70%报销(上限1万) |
+| 前端 | `vo.ts` | SettleVO +catastrophicPay +assistancePay |
+
+**报销计算扩展（四层）**：
+```
+第一层 基本统筹：起付线→报销比例→封顶线
+第二层 大病保险：基本统筹封顶后自动进入，60%报销，上限30万
+第三层 医疗救助：困难群体(medicalAssistance=1)额外70%报销，上限1万
+第四层 患者自付：个账优先→现金支付
+```
+
+**技术点落实**：
+- 大病触发：当 capRemaining <= 0 时自动进入大病计算
+- 救助触发：user.medicalAssistance == 1 && cashPay > 0
+- Settle 完整记录四层支付金额：poolingPay/catastrophicPay/assistancePay/accountPay/cashPay
+- 慢特病种子数据已预留（高血压/年额5000/80%），结算时可扩展读取
+
+**遗漏风险**：
+- 慢特病认定未接入结算引擎（仅建表和种子数据），需在报销规则查找时额外查慢特病表并使用其 annual_cap + reimburse_ratio

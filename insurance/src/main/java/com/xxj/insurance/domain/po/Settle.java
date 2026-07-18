@@ -63,6 +63,12 @@ public class Settle implements Serializable {
      */
     private BigDecimal cashPay;
 
+    /** 大病保险支付金额 */
+    private BigDecimal catastrophicPay;
+
+    /** 医疗救助支付金额 */
+    private BigDecimal assistancePay;
+
     private Integer status;
 
     

@@ -74,6 +74,10 @@ export interface SettleVO {
   accountPay?: number
   /** 个人现金支付金额 */
   cashPay?: number
+  /** 大病保险支付 */
+  catastrophicPay?: number
+  /** 医疗救助支付 */
+  assistancePay?: number
   status: number
   hospitalName?: string
   createTime?: string

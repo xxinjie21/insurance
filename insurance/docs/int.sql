@@ -615,3 +615,31 @@ CREATE TABLE `remote_medical_filing` (
 -- 异地备案种子数据（张三在南昌参保，备案到南昌市一院）
 INSERT INTO `remote_medical_filing` (`user_id`, `insured_city`, `treatment_city`, `treatment_hospital_id`, `filing_status`, `start_date`, `end_date`, `create_time`) VALUES
 (1, '南昌市', '南昌市', 1, 1, '2026-01-01', '2026-12-31', NOW());
+
+-- ----------------------------
+-- 24. 慢特病认定表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `chronic_disease_cert`;
+CREATE TABLE `chronic_disease_cert` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id` BIGINT NOT NULL COMMENT '参保人ID',
+    `disease_type` VARCHAR(64) NOT NULL COMMENT '病种：高血压/糖尿病/冠心病/慢阻肺等',
+    `cert_status` TINYINT DEFAULT 1 COMMENT '状态：1-有效 2-过期 3-撤销',
+    `annual_cap` DECIMAL(12,2) NOT NULL COMMENT '年度限额',
+    `reimburse_ratio` DECIMAL(4,3) NOT NULL COMMENT '报销比例',
+    `start_date` DATE NOT NULL,
+    `end_date` DATE DEFAULT NULL,
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `fk_cdc_user` (`user_id`),
+    CONSTRAINT `fk_cdc_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门诊慢特病认定表';
+
+-- 慢特病种子数据（张三有高血压慢病认定）
+INSERT INTO `chronic_disease_cert` (`user_id`, `disease_type`, `cert_status`, `annual_cap`, `reimburse_ratio`, `start_date`, `end_date`) VALUES
+(1, '高血压', 1, 5000.00, 0.800, '2026-01-01', '2026-12-31');
+
+-- user 表增加医疗救助标记
+ALTER TABLE `user` ADD COLUMN `medical_assistance` TINYINT DEFAULT 0 COMMENT '医疗救助标记：0-否 1-是(低保/特困)';
+ALTER TABLE `settle` ADD COLUMN `catastrophic_pay` DECIMAL(10,2) DEFAULT 0.00 COMMENT '大病保险支付金额';
+ALTER TABLE `settle` ADD COLUMN `assistance_pay` DECIMAL(10,2) DEFAULT 0.00 COMMENT '医疗救助支付金额';

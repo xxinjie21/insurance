@@ -23,6 +23,10 @@ public class SettleVO {
     private BigDecimal accountPay;
     /** 个人现金支付金额 */
     private BigDecimal cashPay;
+    /** 大病保险支付金额 */
+    private BigDecimal catastrophicPay;
+    /** 医疗救助支付金额 */
+    private BigDecimal assistancePay;
     private Integer status;
     private LocalDateTime createTime;
 
