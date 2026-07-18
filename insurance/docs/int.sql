@@ -643,3 +643,28 @@ INSERT INTO `chronic_disease_cert` (`user_id`, `disease_type`, `cert_status`, `a
 ALTER TABLE `user` ADD COLUMN `medical_assistance` TINYINT DEFAULT 0 COMMENT '医疗救助标记：0-否 1-是(低保/特困)';
 ALTER TABLE `settle` ADD COLUMN `catastrophic_pay` DECIMAL(10,2) DEFAULT 0.00 COMMENT '大病保险支付金额';
 ALTER TABLE `settle` ADD COLUMN `assistance_pay` DECIMAL(10,2) DEFAULT 0.00 COMMENT '医疗救助支付金额';
+
+-- ----------------------------
+-- 25. 退款表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `refund`;
+CREATE TABLE `refund` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `settle_id` BIGINT NOT NULL COMMENT '结算单ID',
+    `visit_id` BIGINT NOT NULL COMMENT '就诊ID',
+    `user_id` BIGINT NOT NULL COMMENT '患者ID',
+    `total_refund` DECIMAL(10,2) NOT NULL COMMENT '退款总额',
+    `pooling_refund` DECIMAL(10,2) DEFAULT 0.00 COMMENT '统筹退还金额',
+    `account_refund` DECIMAL(10,2) DEFAULT 0.00 COMMENT '个账退还金额',
+    `cash_refund` DECIMAL(10,2) DEFAULT 0.00 COMMENT '现金退还金额',
+    `reason` VARCHAR(500) NOT NULL COMMENT '退款原因',
+    `status` TINYINT DEFAULT 0 COMMENT '状态：0-待审批 1-已通过 2-已拒绝 3-已完成退款',
+    `reject_reason` VARCHAR(255) DEFAULT NULL COMMENT '拒绝理由',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `fk_refund_settle` (`settle_id`),
+    KEY `fk_refund_user` (`user_id`),
+    CONSTRAINT `fk_refund_settle` FOREIGN KEY (`settle_id`) REFERENCES `settle` (`id`),
+    CONSTRAINT `fk_refund_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='退款表';

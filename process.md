@@ -14,7 +14,7 @@
 | 模块八：年度管理 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块九：异地就医 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十：多层次保障 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块十一：退费体系 | ⬜ 待开始 | - | - |
+| 模块十一：退费体系 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十二：医生角色与处方 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十三：报表与导出 | ⬜ 待开始 | - | - |
 | 模块十四：数据安全与审计 | ⬜ 待开始 | - | - |
@@ -378,3 +378,29 @@
 
 **遗漏风险**：
 - 慢特病认定未接入结算引擎（仅建表和种子数据），需在报销规则查找时额外查慢特病表并使用其 annual_cap + reimburse_ratio
+
+---
+
+### 模块十一：退费体系 ✅ 2026-07-18
+
+**改动摘要**：新增退款申请→审批→原路退回完整流程，支持按比例拆分到统筹/个账/现金三方分别退回。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| DDL | `int.sql` | 新增 `refund` 表 |
+| PO | `Refund.java` | **新增**：settleId/visitId/userId/totalRefund/poolingRefund/accountRefund/cashRefund/reason/status |
+| Mapper | `RefundMapper.java` | **新增** |
+| Service | `IRefundService` + Impl | **新增**：apply(按比例拆分→提交)/approve(事务内统筹退累计+个账退余额+更新结算单)/reject(拒绝+理由)/listBySettle |
+| Controller | `RefundController.java` | **新增**：POST /refund/apply / POST /approve/{id} / POST /reject/{id} / GET /refund/list/{settleId} |
+
+**技术点落实**：
+- 比例拆分：refundAmount/total → 各方退款 = 各方支付 × ratio
+- 原路退回：统筹退款回退 year_accumulate.poolingTotal；个账退款退回 user.personalAccountBalance；现金退款仅记录
+- approve 事务：统筹累计退回+个账余额退回+结算单金额更新在同一事务内
+- 状态机：0待审批→1(通过)/3(完成) 或 2(拒绝)
+
+**遗漏风险**：
+- 部分费用退费（指定某条fee退部分）未实现，当前为按总金额比例退
+- 退款后未重新计算起付线（简化处理）
