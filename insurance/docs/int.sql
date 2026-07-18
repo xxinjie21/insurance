@@ -540,3 +540,53 @@ INSERT INTO `audit_rule` (`rule_type`, `description`, `param_key`, `param_value`
 ('DUPLICATE_DRUG', '硝苯地平与氨氯地平同为钙通道阻滞剂，不建议重复使用', '硝苯地平', '氨氯地平', 1, 1),
 ('AGE_RESTRICT', '阿托伐他汀限18岁以上使用', '阿托伐他汀', '18', 2, 1),
 ('AGE_RESTRICT', '瑞舒伐他汀限18岁以上使用', '瑞舒伐他汀', '18', 2, 1);
+
+-- fee 表关联处方
+ALTER TABLE `fee` ADD COLUMN `prescription_id` BIGINT DEFAULT NULL COMMENT '关联处方ID';
+
+-- ----------------------------
+-- 21. 医生表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `doctor`;
+CREATE TABLE `doctor` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `hospital_id` BIGINT NOT NULL COMMENT '所属医院ID',
+    `name` VARCHAR(32) NOT NULL COMMENT '医生姓名',
+    `dept` VARCHAR(32) NOT NULL COMMENT '科室',
+    `title` VARCHAR(32) DEFAULT NULL COMMENT '职称：主任医师/副主任医师/主治医师/住院医师',
+    `insurance_code` VARCHAR(32) DEFAULT NULL COMMENT '医保医师编码',
+    `status` TINYINT DEFAULT 1 COMMENT '状态：0-停用 1-正常',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_insurance_code` (`insurance_code`),
+    KEY `fk_doc_hospital` (`hospital_id`),
+    CONSTRAINT `fk_doc_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospital` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='医生表';
+
+-- 医生种子数据
+INSERT INTO `doctor` (`hospital_id`, `name`, `dept`, `title`, `insurance_code`, `status`) VALUES
+(1, '王建华', '呼吸内科', '主任医师', 'DOC36010001', 1),
+(1, '赵明', '消化内科', '副主任医师', 'DOC36010002', 1),
+(2, '陈志强', '心内科', '主任医师', 'DOC36010003', 1),
+(2, '孙丽', '内分泌科', '主治医师', 'DOC36010004', 1),
+(3, '刘伟', '消化内科', '主治医师', 'DOC36010005', 1),
+(3, '周芳', '全科', '副主任医师', 'DOC36010006', 1);
+
+-- ----------------------------
+-- 22. 处方表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `prescription`;
+CREATE TABLE `prescription` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `visit_id` BIGINT NOT NULL COMMENT '就诊ID',
+    `doctor_id` BIGINT NOT NULL COMMENT '开方医生ID',
+    `status` TINYINT DEFAULT 0 COMMENT '状态：0-待审核 1-审核通过 2-审核拒绝 3-已发药',
+    `pharmacist_id` BIGINT DEFAULT NULL COMMENT '审核药师(暂用doctor表ID)',
+    `reject_reason` VARCHAR(255) DEFAULT NULL COMMENT '拒绝理由',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `fk_rx_visit` (`visit_id`),
+    KEY `fk_rx_doctor` (`doctor_id`),
+    CONSTRAINT `fk_rx_visit` FOREIGN KEY (`visit_id`) REFERENCES `visit` (`id`),
+    CONSTRAINT `fk_rx_doctor` FOREIGN KEY (`doctor_id`) REFERENCES `doctor` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='处方表';

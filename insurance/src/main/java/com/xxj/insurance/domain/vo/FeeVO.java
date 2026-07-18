@@ -22,6 +22,8 @@ public class FeeVO {
     private String usageMethod;
     /** 费用日期（住院每日清单） */
     private java.time.LocalDate feeDate;
+    /** 关联处方ID */
+    private Long prescriptionId;
     private String hospitalName;
     private LocalDateTime createTime;
 }

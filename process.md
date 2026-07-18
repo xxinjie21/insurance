@@ -15,7 +15,7 @@
 | 模块九：异地就医 | ⬜ 待开始 | - | - |
 | 模块十：多层次保障 | ⬜ 待开始 | - | - |
 | 模块十一：退费体系 | ⬜ 待开始 | - | - |
-| 模块十二：医生角色与处方 | ⬜ 待开始 | - | - |
+| 模块十二：医生角色与处方 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十三：报表与导出 | ⬜ 待开始 | - | - |
 | 模块十四：数据安全与审计 | ⬜ 待开始 | - | - |
 | 模块十五：RabbitMQ 异步消息基础设施 | ⬜ 待开始 | - | - |
@@ -281,3 +281,37 @@
 - @Permission：限医保局/管理员
 
 **遗漏风险**：年度结转需手动触发（未做定时Job），生产环境需改成 `@Scheduled(cron="0 0 0 1 1 ?")`
+
+---
+
+### 模块十二：医生角色与处方 ✅ 2026-07-18
+
+**改动摘要**：新增医生实体（医保医师编码）+ 处方开具→药师审核→发药流程 + 费用关联处方。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| DDL | `int.sql` | 新增 `doctor` 表(6条种子)；新增 `prescription` 表；fee ALTER ADD prescription_id |
+| PO | `Doctor.java` | **新增**：hospitalId/name/dept/title/insuranceCode/status |
+| PO | `Prescription.java` | **新增**：visitId/doctorId/status(0待审/1通过/2拒绝/3已发药)/pharmacistId/rejectReason |
+| PO | `Fee.java` | +prescriptionId |
+| Mapper | 2个Mapper | **新增** |
+| Service | `IDoctorService` + Impl | **新增**：listByHospital(按科室/姓名搜索) |
+| Service | `IPrescriptionService` + Impl | **新增**：prescribe(校验医生归属)→approve(审核通过)→reject(驳回+理由)→listByVisit |
+| Controller | `DoctorController.java` | **新增**：GET /doctor/list?keyword= |
+| Controller | `PrescriptionController.java` | **新增**：POST /prescription/prescribe / POST /approve/{id} / POST /reject/{id} / GET /list/{visitId} |
+| DTO | `FeeAddDTO.java` | +prescriptionId |
+| VO | `FeeVO.java` | +prescriptionId |
+| 前端 | `vo.ts` | FeeVO +prescriptionId |
+
+**技术点落实**：
+- 开方校验：医生必须属于就诊医院 + 状态正常
+- 处方状态机：0待审核→1审核通过(可生成费用)→3已发药 或 2审核拒绝(可重开)
+- 费用关联：Fee.prescriptionId 可追溯费用来源处方
+- 药师审核：需审核通过后前端才可基于该处方录入费用（业务逻辑由前端串联）
+
+**遗漏风险**：
+- pharmacistId 目前硬编码为1L，需对接登录用户体系
+- 处方审核后发药（status=3）未实现，当前到审核通过即止
+- 前端处方管理UI未实现

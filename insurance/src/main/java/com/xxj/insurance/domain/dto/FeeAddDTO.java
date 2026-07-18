@@ -38,6 +38,9 @@ public class FeeAddDTO {
     /** 目录类型：drug/treatment/consumable（选目录时传入） */
     private String catalogType;
 
-    /** 目录项ID（选目录时传入，后端自动回填名称/类型/编码/规格） */
+    /** 目录项ID（选目录时传入） */
     private Long catalogId;
+
+    /** 关联处方ID（通过处方开药时传入） */
+    private Long prescriptionId;
 }

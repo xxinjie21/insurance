@@ -52,6 +52,8 @@ export interface FeeVO {
   usageMethod?: string
   /** 费用日期（住院每日清单） */
   feeDate?: string
+  /** 关联处方ID */
+  prescriptionId?: string
   price: number
   num: number
   total: number
