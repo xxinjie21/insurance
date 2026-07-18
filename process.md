@@ -9,7 +9,7 @@
 | 模块三：医保目录体系 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块四：结算单支付拆分 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块五：支付流程改造 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块六：门诊/住院流程拓展 | ⬜ 待开始 | - | - |
+| 模块六：门诊/住院流程拓展 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块七：审核规则引擎 | ⬜ 待开始 | - | - |
 | 模块八：年度管理 | ⬜ 待开始 | - | - |
 | 模块九：异地就医 | ⬜ 待开始 | - | - |
@@ -187,3 +187,39 @@
 **遗漏风险**：
 - 旧的用户如果 user_account 有余额但 user.personal_account_balance 为0，需要数据迁移脚本（按需）
 - 前端注册表单需增加参保类型选择（UI改动不在后端范围内）
+
+---
+
+### 模块六：门诊/住院流程拓展 ✅ 2026-07-18
+
+**改动摘要**：新增挂号环节（分诊→付费）、住院入院→押金→出院结算完整链路、fee_date支持每日清单、出院自动调用结算引擎。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| DDL | `int.sql` | 新增 `registration` 表(挂号)；新增 `inpatient` 表(住院)；新增 `inpatient_deposit` 表(押金)；fee ALTER ADD fee_date |
+| PO | `Registration.java` | **新增** |
+| PO | `Inpatient.java` | **新增** |
+| PO | `InpatientDeposit.java` | **新增** |
+| PO | `Fee.java` | +feeDate(LocalDate) |
+| Mapper | 3个Mapper | **新增** |
+| Service | `IRegistrationService.java` + Impl | **新增**：挂号(身份证查患者→校验医院→挂号费15/30) / myList / hospitalList |
+| Service | `IInpatientService.java` + Impl | **新增**：admit(校验住院类型→生成住院号) / deposit(押金流水) / discharge(汇总费用→调settleService.calculate()→更新状态) / 列表查询 |
+| Controller | `RegistrationController.java` | **新增**：POST /registration/add / GET /registration/my/list / GET /registration/hospital/list |
+| Controller | `InpatientController.java` | **新增**：POST /inpatient/admit / POST /inpatient/deposit / POST /inpatient/discharge/{id} / GET /inpatient/{hospital\|my}/list |
+| VO | `FeeVO.java` | +feeDate |
+| 前端 | `vo.ts` | 新增 RegistrationVO / InpatientVO；FeeVO +feeDate |
+
+**技术点落实**：
+- 挂号费固定：普通门诊15元 专家门诊30元，按甲类参与后续报销计算
+- 入院校验：visit.type必须为2(住院)，同一visit不可重复入院(uk_visit_id)
+- 出院结算：事务内调用 settleService.calculate() 复用完整报销引擎(规则/起付线/封顶线/年度累计)
+- 押金管理：inpatient_deposit 表记录每笔押金流水，inpatient.deposit_total 实时汇总
+- 住院号：IP+yyyyMMdd+4位随机数，唯一索引防重
+- 分布式锁/幂等体系由 settleService.calculate() 内部保障
+
+**遗漏风险**：
+- 挂号后创建visit的流程由前端串联（先挂号→再创建就诊），后端未做自动关联
+- 出院退押金（deposit_total > total_fee时退差额）未实现计算逻辑
+- 住院费用未自动回填inpatient.total_fee字段

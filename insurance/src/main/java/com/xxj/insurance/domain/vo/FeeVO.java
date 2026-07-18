@@ -20,6 +20,8 @@ public class FeeVO {
     private String specification;
     /** 用法用量 */
     private String usageMethod;
+    /** 费用日期（住院每日清单） */
+    private java.time.LocalDate feeDate;
     private String hospitalName;
     private LocalDateTime createTime;
 }

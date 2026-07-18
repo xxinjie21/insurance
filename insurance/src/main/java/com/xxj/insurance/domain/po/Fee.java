@@ -56,6 +56,9 @@ public class Fee implements Serializable {
      */
     private String usageMethod;
 
+    /** 费用日期（住院每日清单用） */
+    private java.time.LocalDate feeDate;
+
     private LocalDateTime createTime;
 
 

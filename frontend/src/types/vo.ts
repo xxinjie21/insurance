@@ -50,6 +50,8 @@ export interface FeeVO {
   specification?: string
   /** 用法用量 */
   usageMethod?: string
+  /** 费用日期（住院每日清单） */
+  feeDate?: string
   price: number
   num: number
   total: number
@@ -234,6 +236,35 @@ export interface FeeDetailVO {
   reimburse: number
   /** 本项自付金额 */
   selfPay: number
+}
+
+// 挂号记录
+export interface RegistrationVO {
+  id: string
+  userId: string
+  hospitalId: string
+  dept?: string
+  doctorName?: string
+  regType: number
+  regFee: number
+  status: number
+  createTime?: string
+}
+
+// 住院记录
+export interface InpatientVO {
+  id: string
+  visitId: string
+  userId: string
+  hospitalId: string
+  inpatientNo: string
+  bedNo?: string
+  admissionTime: string
+  dischargeTime?: string
+  depositTotal: number
+  totalFee: number
+  status: number
+  createTime?: string
 }
 
 // 费用录入表单（含目录选择）

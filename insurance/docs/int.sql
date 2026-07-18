@@ -431,3 +431,83 @@ INSERT INTO `consumable_catalog` (`code`, `name`, `specification`, `category`, `
 ('HC00201', '血糖试纸', '50条/盒', 2, 100.00, '限糖尿病患者'),
 ('HC00202', '一次性导尿管', '双腔16Fr', 2, 15.00, NULL),
 ('HC00301', '人工髋关节', '陶瓷', 3, NULL, '高值耗材，按比例报销');
+
+-- 修改 fee 表：增加 fee_date 支持每日费用清单
+ALTER TABLE `fee` ADD COLUMN `fee_date` DATE DEFAULT NULL COMMENT '费用日期(住院每日清单)';
+
+-- ----------------------------
+-- 17. 门诊挂号表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `registration`;
+CREATE TABLE `registration` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `user_id` BIGINT NOT NULL COMMENT '患者ID',
+    `hospital_id` BIGINT NOT NULL COMMENT '医院ID',
+    `dept` VARCHAR(32) DEFAULT NULL COMMENT '挂号科室',
+    `doctor_name` VARCHAR(32) DEFAULT NULL COMMENT '医生姓名',
+    `reg_type` TINYINT NOT NULL DEFAULT 1 COMMENT '挂号类型：1-普通门诊 2-专家门诊',
+    `reg_fee` DECIMAL(10,2) NOT NULL COMMENT '挂号费(医事服务费)',
+    `status` TINYINT DEFAULT 0 COMMENT '状态：0-已挂号 1-已就诊 2-已取消',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '挂号时间',
+    PRIMARY KEY (`id`),
+    KEY `fk_reg_user` (`user_id`),
+    KEY `fk_reg_hospital` (`hospital_id`),
+    CONSTRAINT `fk_reg_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`),
+    CONSTRAINT `fk_reg_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospital` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='门诊挂号表';
+
+-- 挂号种子数据
+INSERT INTO `registration` (`user_id`, `hospital_id`, `dept`, `doctor_name`, `reg_type`, `reg_fee`, `status`, `create_time`) VALUES
+(1, 1, '呼吸内科', '王医生', 1, 15.00, 0, NOW()),
+(2, 2, '心内科', '陈医生', 2, 30.00, 0, NOW());
+
+-- ----------------------------
+-- 18. 住院记录表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `inpatient`;
+CREATE TABLE `inpatient` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `visit_id` BIGINT NOT NULL COMMENT '关联就诊ID',
+    `user_id` BIGINT NOT NULL COMMENT '患者ID',
+    `hospital_id` BIGINT NOT NULL COMMENT '医院ID',
+    `inpatient_no` VARCHAR(32) NOT NULL COMMENT '住院号(唯一)',
+    `bed_no` VARCHAR(16) DEFAULT NULL COMMENT '床位号',
+    `admission_time` DATETIME NOT NULL COMMENT '入院时间',
+    `discharge_time` DATETIME DEFAULT NULL COMMENT '出院时间',
+    `deposit_total` DECIMAL(12,2) DEFAULT 0.00 COMMENT '累计缴纳押金',
+    `total_fee` DECIMAL(12,2) DEFAULT 0.00 COMMENT '住院总费用',
+    `status` TINYINT DEFAULT 0 COMMENT '状态：0-住院中 1-已出院 2-出院结算中',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_inpatient_no` (`inpatient_no`),
+    UNIQUE KEY `uk_visit_id` (`visit_id`),
+    KEY `fk_ip_user` (`user_id`),
+    KEY `fk_ip_hospital` (`hospital_id`),
+    CONSTRAINT `fk_ip_user` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`),
+    CONSTRAINT `fk_ip_visit` FOREIGN KEY (`visit_id`) REFERENCES `visit` (`id`),
+    CONSTRAINT `fk_ip_hospital` FOREIGN KEY (`hospital_id`) REFERENCES `hospital` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='住院记录表';
+
+-- 住院种子数据（visitId=3 是住院类型）
+INSERT INTO `inpatient` (`visit_id`, `user_id`, `hospital_id`, `inpatient_no`, `bed_no`, `admission_time`, `deposit_total`, `total_fee`, `status`, `create_time`) VALUES
+(3, 1, 3, 'IP202607180001', '301-01', NOW(), 2000.00, 0.00, 0, NOW());
+
+-- ----------------------------
+-- 19. 住院押金记录表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `inpatient_deposit`;
+CREATE TABLE `inpatient_deposit` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `inpatient_id` BIGINT NOT NULL COMMENT '住院记录ID',
+    `amount` DECIMAL(12,2) NOT NULL COMMENT '金额',
+    `type` TINYINT NOT NULL DEFAULT 1 COMMENT '类型：1-缴纳押金 2-退押金',
+    `remark` VARCHAR(255) DEFAULT NULL COMMENT '备注',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+    PRIMARY KEY (`id`),
+    KEY `fk_dep_inpatient` (`inpatient_id`),
+    CONSTRAINT `fk_dep_inpatient` FOREIGN KEY (`inpatient_id`) REFERENCES `inpatient` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='住院押金记录表';
+
+-- 押金种子数据
+INSERT INTO `inpatient_deposit` (`inpatient_id`, `amount`, `type`, `remark`, `create_time`) VALUES
+(1, 2000.00, 1, '入院押金', NOW());
