@@ -454,3 +454,25 @@
 - 操作日志无前端查询界面（需SQL直查）
 - 敏感操作二次验证未实现
 - 日志表无定期归档清理机制
+
+---
+
+### 前端补齐 ✅ 2026-07-18
+
+**改动摘要**：补齐 TypeScript API 层、Route 路由、导航菜单和6个新页面组件，前端完整覆盖所有新增后端模块。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| API | `api/index.ts` | 新增 CATALOG/REGISTRATION/INPATIENT/AUDIT/DOCTOR/PRESCRIPTION/REMOTE_FILING/REFUND/REPORT/YEAR_END 10组API常量 |
+| Route | `router/index.ts` | 新增6条路由：catalog/registration/inpatient/patient-inpatient/medical-audit/medical-report |
+| Layout | `layouts/MainLayout.vue` | 医院菜单新增挂号管理+住院管理+医保目录；医保局菜单新增医保审核+统计报表+医保目录；管理员菜单同步新增 |
+| Component | `hospital/SettleList.vue` | 详情对话框新增统筹/大病/救助/个账/现金拆分配额展示 |
+| Component | `hospital/RegistrationList.vue` | **新增**：挂号列表 + 新增挂号弹窗（身份证+科室+医生+普通/专家） |
+| Component | `hospital/CatalogSearch.vue` | **新增**：三tab药品/诊疗/耗材目录搜索（编码+名称模糊查询） |
+| Component | `hospital/InpatientList.vue` | **新增**：住院列表 + 押金缴纳 + 出院结算（确认弹窗） |
+| Component | `medical/AuditCheck.vue` | **新增**：输入结算单ID→审核→展示问题列表（问题描述+严重程度+建议调减金额） |
+| Component | `medical/ReportDashboard.vue` | **新增**：基金收支/费用构成/就诊统计三报表（按年份月份） |
+
+**编译验证**：`npm run build` 成功，无 TypeScript 错误，dist 产出正常。

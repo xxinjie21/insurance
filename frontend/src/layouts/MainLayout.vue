@@ -321,6 +321,21 @@ const menuItems = computed<MenuItem[]>(() => {
         title: '本院患者',
         icon: 'User',
       },
+      {
+        path: '/registration',
+        title: '挂号管理',
+        icon: 'Tickets',
+      },
+      {
+        path: '/inpatient',
+        title: '住院管理',
+        icon: 'HomeFilled',
+      },
+      {
+        path: '/catalog',
+        title: '医保目录',
+        icon: 'Collection',
+      },
     ]
   }
 
@@ -342,6 +357,21 @@ const menuItems = computed<MenuItem[]>(() => {
         path: '/medical/batches',
         title: '基金拨付',
         icon: 'Document',
+      },
+      {
+        path: '/medical/audit',
+        title: '医保审核',
+        icon: 'Checked',
+      },
+      {
+        path: '/medical/report',
+        title: '统计报表',
+        icon: 'DataAnalysis',
+      },
+      {
+        path: '/catalog',
+        title: '医保目录',
+        icon: 'Collection',
       },
     ]
   }
@@ -420,6 +450,24 @@ const menuItems = computed<MenuItem[]>(() => {
             icon: 'UserFilled',
             requireHospital: true,
           },
+          {
+            path: '/registration',
+            title: '挂号管理',
+            icon: 'Tickets',
+            requireHospital: true,
+          },
+          {
+            path: '/inpatient',
+            title: '住院管理',
+            icon: 'HomeFilled',
+            requireHospital: true,
+          },
+          {
+            path: '/catalog',
+            title: '医保目录',
+            icon: 'Collection',
+            requireHospital: true,
+          },
         ],
       },
       // 医保局功能
@@ -442,6 +490,16 @@ const menuItems = computed<MenuItem[]>(() => {
             path: '/medical/batches',
             title: '基金拨付',
             icon: 'Document',
+          },
+          {
+            path: '/medical/audit',
+            title: '医保审核',
+            icon: 'Checked',
+          },
+          {
+            path: '/medical/report',
+            title: '统计报表',
+            icon: 'DataAnalysis',
           },
         ],
       },

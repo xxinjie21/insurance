@@ -116,7 +116,21 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/hospital/HospitalPatientList.vue'),
         meta: { title: '本院患者', requiresAuth: true, roles: [2, 4] },
       },
-      // 医院管理页面 - 所有已登录用户可查看列表，但只有医保局(3)和管理员(4)可以注册医院
+      // 审核页面 - 医保局/管理员
+      {
+        path: 'medical/audit',
+        name: 'AuditCheck',
+        component: () => import('@/views/medical/AuditCheck.vue'),
+        meta: { title: '医保审核', requiresAuth: true, roles: [3, 4] },
+      },
+      // 报表页面 - 医保局/管理员
+      {
+        path: 'medical/report',
+        name: 'ReportDashboard',
+        component: () => import('@/views/medical/ReportDashboard.vue'),
+        meta: { title: '统计报表', requiresAuth: true, roles: [3, 4] },
+      },
+      // 医院管理页面 - 所有已登录用户可查看列表
       {
         path: 'hospital/list',
         name: 'HospitalList',
@@ -128,6 +142,34 @@ const routes: RouteRecordRaw[] = [
         name: 'HospitalSign',
         component: () => import('@/views/hospital/HospitalSign.vue'),
         meta: { title: '医院注册', requiresAuth: true, roles: [3, 4] },
+      },
+      // 目录查询 - 医院/医保局/管理员
+      {
+        path: 'catalog',
+        name: 'CatalogSearch',
+        component: () => import('@/views/hospital/CatalogSearch.vue'),
+        meta: { title: '医保目录', requiresAuth: true, roles: [2, 3, 4] },
+      },
+      // 挂号管理 - 医院/管理员
+      {
+        path: 'registration',
+        name: 'RegistrationList',
+        component: () => import('@/views/hospital/RegistrationList.vue'),
+        meta: { title: '挂号管理', requiresAuth: true, roles: [2, 4] },
+      },
+      // 住院管理 - 医院/管理员
+      {
+        path: 'inpatient',
+        name: 'InpatientList',
+        component: () => import('@/views/hospital/InpatientList.vue'),
+        meta: { title: '住院管理', requiresAuth: true, roles: [2, 4] },
+      },
+      // 患者端住院记录
+      {
+        path: 'patient/inpatient',
+        name: 'PatientInpatient',
+        component: () => import('@/views/hospital/InpatientList.vue'),
+        meta: { title: '住院记录', requiresAuth: true, roles: [1, 4] },
       },
       // 医保局相关页面 - 医保局(3)和管理员(4)可访问
       {

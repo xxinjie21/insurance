@@ -163,6 +163,11 @@
         <el-descriptions-item label="总费用">¥{{ formatMoney(selectedSettle.total) }}</el-descriptions-item>
         <el-descriptions-item label="报销金额">¥{{ formatMoney(selectedSettle.reimburse) }}</el-descriptions-item>
         <el-descriptions-item label="自付金额">¥{{ formatMoney(selectedSettle.selfPay) }}</el-descriptions-item>
+        <el-descriptions-item v-if="selectedSettle.poolingPay != null" label="统筹支付">¥{{ formatMoney(selectedSettle.poolingPay) }}</el-descriptions-item>
+        <el-descriptions-item v-if="selectedSettle.catastrophicPay" label="大病支付">¥{{ formatMoney(selectedSettle.catastrophicPay) }}</el-descriptions-item>
+        <el-descriptions-item v-if="selectedSettle.assistancePay" label="医疗救助">¥{{ formatMoney(selectedSettle.assistancePay) }}</el-descriptions-item>
+        <el-descriptions-item v-if="selectedSettle.accountPay != null" label="个账支付">¥{{ formatMoney(selectedSettle.accountPay) }}</el-descriptions-item>
+        <el-descriptions-item v-if="selectedSettle.cashPay != null" label="现金支付">¥{{ formatMoney(selectedSettle.cashPay) }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="getSettleStatusType(selectedSettle.status)">
             {{ getSettleStatusName(selectedSettle.status) }}

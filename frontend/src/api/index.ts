@@ -81,7 +81,76 @@ export const PAY_API = {
 export const ACCOUNT_API = {
   GET: '/account/get',
   RECHARGE: '/account/recharge',
-  PAY: '/account/pay',  // 使用 POST + JSON body
+  PAY: '/account/pay',
   RECHARGE_LIST: '/account/recharge/list',
   CONSUMPTION_LIST: '/account/consumption/list',
+}
+
+// 目录相关 API
+export const CATALOG_API = {
+  DRUG_LIST: '/catalog/drug/list',
+  TREATMENT_LIST: '/catalog/treatment/list',
+  CONSUMABLE_LIST: '/catalog/consumable/list',
+}
+
+// 挂号相关 API
+export const REGISTRATION_API = {
+  ADD: '/registration/add',
+  MY_LIST: '/registration/my/list',
+  HOSPITAL_LIST: '/registration/hospital/list',
+}
+
+// 住院相关 API
+export const INPATIENT_API = {
+  ADMIT: '/inpatient/admit',
+  DEPOSIT: '/inpatient/deposit',
+  DISCHARGE: (inpatientId: string | number) => `/inpatient/discharge/${inpatientId}`,
+  HOSPITAL_LIST: '/inpatient/hospital/list',
+  MY_LIST: '/inpatient/my/list',
+}
+
+// 审核相关 API
+export const AUDIT_API = {
+  SETTLE: (settleId: string | number) => `/audit/settle/${settleId}`,
+}
+
+// 医生相关 API
+export const DOCTOR_API = {
+  LIST: '/doctor/list',
+}
+
+// 处方相关 API
+export const PRESCRIPTION_API = {
+  PRESCRIBE: '/prescription/prescribe',
+  APPROVE: (id: string | number) => `/prescription/approve/${id}`,
+  REJECT: (id: string | number) => `/prescription/reject/${id}`,
+  LIST: (visitId: string | number) => `/prescription/list/${visitId}`,
+}
+
+// 异地就医相关 API
+export const REMOTE_FILING_API = {
+  FILE: '/remote-filing/file',
+  CANCEL: (id: string | number) => `/remote-filing/cancel/${id}`,
+  MY: '/remote-filing/my',
+}
+
+// 退款相关 API
+export const REFUND_API = {
+  APPLY: '/refund/apply',
+  APPROVE: (id: string | number) => `/refund/approve/${id}`,
+  REJECT: (id: string | number) => `/refund/reject/${id}`,
+  LIST: (settleId: string | number) => `/refund/list/${settleId}`,
+}
+
+// 报表相关 API
+export const REPORT_API = {
+  FUND: '/report/fund',
+  FEE_COMPOSITION: '/report/fee-composition',
+  VISIT_STATS: '/report/visit-stats',
+}
+
+// 年度管理 API
+export const YEAR_END_API = {
+  ROLLOVER: '/year-end/rollover',
+  RECONCILE: '/year-end/reconcile',
 }
