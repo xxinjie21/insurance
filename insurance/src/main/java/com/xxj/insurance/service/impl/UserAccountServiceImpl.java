@@ -131,12 +131,15 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
         }
     }
 
-    // 充值事务体：插入充值记录 → 更新账户余额
+    // 充值事务体：插入流水记录 → 更新个人账户余额
     public Result executeRechargeWithTransaction(Long userId, RechargeDTO dto) {
-        UserAccount account = getOrCreateAccount(userId);
-
-        if (account.getStatus().equals(AccountConstants.ACCOUNT_STATUS_FROZEN)) {
-            return Result.fail("账户已被冻结，无法充值");
+        // 查询用户医保个人账户
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+        if (user.getPersonalAccountBalance() == null) {
+            user.setPersonalAccountBalance(BigDecimal.ZERO);
         }
 
         String orderNo = generateRechargeOrderNo(userId);
@@ -154,16 +157,18 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
 
         rechargeRecordMapper.insert(record);
 
-        BigDecimal newBalance = account.getBalance().add(dto.getAmount());
-        BigDecimal newTotalRecharge = account.getTotalRecharge().add(dto.getAmount());
+        BigDecimal newBalance = user.getPersonalAccountBalance().add(dto.getAmount());
+        user.setPersonalAccountBalance(newBalance);
+        userMapper.updateById(user);
 
-        account.setBalance(newBalance);
-        account.setTotalRecharge(newTotalRecharge);
+        // 同步更新 user_account 表（兼容层）
+        UserAccount account = getOrCreateAccount(userId);
+        account.setBalance(account.getBalance().add(dto.getAmount()));
+        account.setTotalRecharge(account.getTotalRecharge().add(dto.getAmount()));
         account.setUpdateTime(LocalDateTime.now());
-
         this.updateById(account);
 
-        log.info("充值成功，userId: {}, orderNo: {}, amount: {}", userId, orderNo, dto.getAmount());
+        log.info("个人账户划入成功，userId: {}, orderNo: {}, amount: {}", userId, orderNo, dto.getAmount());
 
         return Result.ok("充值成功");
     }

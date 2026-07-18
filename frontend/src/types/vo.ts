@@ -167,6 +167,10 @@ export interface UserRegisterVO {
   idCard?: string
   role: number
   hospitalId?: string
+  /** 参保类型：1-职工 2-居民 */
+  insuranceType?: number
+  /** 参保地 */
+  insuranceCity?: string
   createTime?: string
 }
 

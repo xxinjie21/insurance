@@ -8,6 +8,7 @@ import com.xxj.insurance.common.domain.Result;
 import com.xxj.insurance.common.enums.Role;
 import com.xxj.insurance.common.utils.JwtUtil;
 import com.xxj.insurance.domain.dto.UserLoginDTO;
+import com.xxj.insurance.common.constants.AccountConstants;
 import com.xxj.insurance.domain.dto.UserRegisterDTO;
 import com.xxj.insurance.domain.po.Hospital;
 import com.xxj.insurance.domain.po.User;
@@ -25,6 +26,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -193,6 +195,19 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
         }
         if (hospitalId != null) {
             user.setHospitalId(hospitalId);
+        }
+
+        // 患者角色：设置参保信息，职工医保自动初始化个人账户余额
+        Integer insuranceType = userRegisterDTO.getInsuranceType();
+        if (role == 1 && insuranceType != null) {
+            user.setInsuranceType(insuranceType);
+            user.setInsuranceCity(userRegisterDTO.getInsuranceCity());
+            // 职工医保：模拟个人账户初始余额
+            if (insuranceType == 1) {
+                user.setPersonalAccountBalance(AccountConstants.PERSONAL_ACCOUNT_INIT_BALANCE);
+            } else {
+                user.setPersonalAccountBalance(BigDecimal.ZERO);
+            }
         }
 
         save(user);

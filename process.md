@@ -8,7 +8,7 @@
 | 模块二：报销计算引擎重构 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块三：医保目录体系 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块四：结算单支付拆分 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块五：支付流程改造 | ⬜ 待开始 | - | - |
+| 模块五：支付流程改造 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块六：门诊/住院流程拓展 | ⬜ 待开始 | - | - |
 | 模块七：审核规则引擎 | ⬜ 待开始 | - | - |
 | 模块八：年度管理 | ⬜ 待开始 | - | - |
@@ -159,3 +159,31 @@
 **遗漏风险**：
 - 列表查询不返回 feeDetails（仅详情接口返回），避免接口过重
 - user_account 表仍作为兼容层同步更新，模块五会彻底改造
+
+---
+
+### 模块五：支付流程改造 ✅ 2026-07-18
+
+**改动摘要**："手动充值→支付"模式改为医保个人账户直接支付；患者注册时职工医保自动初始化个账余额；充值改为管理员专属操作。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| Controller | `UserAccountController.java` | recharge 接口加 @Permission({Role.ADMIN})，患者端不再暴露充值入口 |
+| Service | `UserAccountServiceImpl.java` | executeRechargeWithTransaction 重写：直接操作 user.personal_account_balance，不再依赖 user_account 做主扣款；user_account 仅作兼容同步 |
+| DTO | `UserRegisterDTO.java` | +insuranceType(Integer) +insuranceCity(String) 可选字段 |
+| Service | `UserServiceImpl.java` | sign() 增加参保信息处理：职工(insuranceType=1)自动初始化 personalAccountBalance=5000.00；居民=0.00 |
+| Constants | `AccountConstants.java` | 新增 PERSONAL_ACCOUNT_INIT_BALANCE(5000.00) + FLOW_TYPE_ACCOUNT_IN/VISIT_PAY/REFUND 流水类型 |
+| 前端 | `frontend/src/types/vo.ts` | UserRegisterVO +insuranceType +insuranceCity |
+
+**技术点落实**：
+- 充值语义变更：从"用户自己充钱"改为"管理员模拟个人账户划入"，操作的是 user.personal_account_balance
+- 注册初始化：职工医保参保人注册时自动获得初始个人账户余额（模拟账户按月划入）
+- 兼容层保持：user_account 表仍同步更新，旧的充值/消费记录表保留为"流水记录"
+- 个人账户余额在主表(user)中，结算和支付直接读写，不再经过中间账户表
+- UserServiceImpl 对 insuranceType 为 null 的注册（非患者角色）不做额外处理，向后兼容
+
+**遗漏风险**：
+- 旧的用户如果 user_account 有余额但 user.personal_account_balance 为0，需要数据迁移脚本（按需）
+- 前端注册表单需增加参保类型选择（UI改动不在后端范围内）

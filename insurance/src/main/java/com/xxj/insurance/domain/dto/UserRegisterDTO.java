@@ -31,4 +31,10 @@ public class UserRegisterDTO {
 
     @NotNull(message = "角色不能为空")
     private Integer role;
+
+    /** 参保类型：1-职工 2-居民（仅患者角色有效） */
+    private Integer insuranceType;
+
+    /** 参保地 */
+    private String insuranceCity;
 }

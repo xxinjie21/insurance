@@ -33,9 +33,10 @@ public class UserAccountController {
         return userAccountService.getAccount(userId);
     }
 
-    // 用户充值
+    // 账户充值（仅管理员可操作，模拟医保个人账户划入）
     @OperationLog("账户充值")
     @PostMapping("/recharge")
+    @Permission({Role.ADMIN})
     public Result recharge(@Valid @RequestBody RechargeDTO dto) {
         Long userId = UserHolder.getUserId();
         return userAccountService.recharge(userId, dto);
