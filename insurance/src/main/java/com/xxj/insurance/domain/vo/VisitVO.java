@@ -16,6 +16,10 @@ public class VisitVO {
     private Long hospitalId;
     private String hospitalName;
     private Integer type;
+    /** 就诊科室 */
+    private String dept;
+    /** 接诊医生 */
+    private String doctorName;
     private String diagnosis;
     private Integer status;
     private LocalDateTime createTime;

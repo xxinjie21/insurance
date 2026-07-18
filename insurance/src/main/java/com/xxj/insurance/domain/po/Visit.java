@@ -42,7 +42,16 @@ public class Visit implements Serializable {
     
     private Integer type;
 
-    
+    /**
+     * 就诊科室
+     */
+    private String dept;
+
+    /**
+     * 接诊医生姓名
+     */
+    private String doctorName;
+
     private String diagnosis;
 
     

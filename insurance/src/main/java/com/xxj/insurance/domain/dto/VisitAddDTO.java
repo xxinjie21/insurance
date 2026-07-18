@@ -14,6 +14,12 @@ public class VisitAddDTO {
     @NotNull(message = "就诊类型不能为空")
     private Integer type;
 
+    /** 就诊科室 */
+    private String dept;
+
+    /** 接诊医生 */
+    private String doctorName;
+
     @NotBlank(message = "诊断结果不能为空")
     private String diagnosis;
 }

@@ -16,3 +16,4 @@ bash.exe.stackdump
 
 # 敏感配置
 .env
+improvement-plan.md

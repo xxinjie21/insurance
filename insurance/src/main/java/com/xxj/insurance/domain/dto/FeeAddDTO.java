@@ -25,4 +25,13 @@ public class FeeAddDTO {
 
     @NotNull(message = "费用类型不能为空")
     private Integer type;
+
+    /** 医保项目编码 */
+    private String insuranceCode;
+
+    /** 药品规格 */
+    private String specification;
+
+    /** 用法用量 */
+    private String usageMethod;
 }

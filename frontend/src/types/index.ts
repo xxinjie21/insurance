@@ -46,6 +46,22 @@ export enum RechargeType {
   CASH = 4, // 现金
 }
 
+// 参保类型
+export enum InsuranceType {
+  EMPLOYEE = 1, // 职工
+  RESIDENT = 2, // 居民
+}
+
+// 医院等级
+export enum HospitalLevel {
+  AAA = 1,    // 三甲
+  AA = 2,     // 三乙
+  AA2 = 3,    // 二甲
+  A2 = 4,     // 二乙
+  ONE = 5,    // 一级
+  COMMUNITY = 6, // 社区
+}
+
 // 账户状态
 export enum AccountStatus {
   FROZEN = 0, // 冻结

@@ -48,7 +48,21 @@ public class Settle implements Serializable {
     
     private BigDecimal selfPay;
 
-    
+    /**
+     * 统筹支付金额
+     */
+    private BigDecimal poolingPay;
+
+    /**
+     * 个人账户支付金额
+     */
+    private BigDecimal accountPay;
+
+    /**
+     * 个人现金支付金额
+     */
+    private BigDecimal cashPay;
+
     private Integer status;
 
     

@@ -41,6 +41,21 @@ public class Fee implements Serializable {
 
     private Integer type;
 
+    /**
+     * 医保项目编码
+     */
+    private String insuranceCode;
+
+    /**
+     * 药品规格
+     */
+    private String specification;
+
+    /**
+     * 用法用量
+     */
+    private String usageMethod;
+
     private LocalDateTime createTime;
 
 

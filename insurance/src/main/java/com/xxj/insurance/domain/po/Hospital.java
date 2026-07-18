@@ -37,9 +37,19 @@ public class Hospital implements Serializable {
     private String password;
 
     /**
-     * 状态：0-禁用，1-正常
+     * 状态：0-待审批 1-已启用 2-已停用 3-已拒绝
      */
     private Integer status;
+
+    /**
+     * 医院等级：1-三甲 2-三乙 3-二甲 4-二乙 5-一级 6-社区
+     */
+    private Integer level;
+
+    /**
+     * 定点协议有效期
+     */
+    private java.time.LocalDate agreementExpire;
 
     private LocalDateTime createTime;
 

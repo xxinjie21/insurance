@@ -42,6 +42,26 @@ public class User implements Serializable {
 
     private Integer role;
 
+    /**
+     * 参保类型：1-职工 2-居民(仅患者)
+     */
+    private Integer insuranceType;
+
+    /**
+     * 医保个人编号(仅患者)
+     */
+    private String insuranceNo;
+
+    /**
+     * 参保地(仅患者)
+     */
+    private String insuranceCity;
+
+    /**
+     * 医保个人账户余额(仅职工参保患者)
+     */
+    private java.math.BigDecimal personalAccountBalance;
+
     private LocalDateTime createTime;
 
 
