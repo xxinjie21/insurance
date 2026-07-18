@@ -78,6 +78,8 @@ export interface SettleVO {
   idCard?: string
   visitType?: number
   diagnosis?: string
+  /** 费用明细列表（查询详情时返回） */
+  feeDetails?: FeeDetailVO[]
 }
 
 export interface BatchItemVO {
@@ -212,6 +214,22 @@ export interface ConsumableCatalogVO {
   category: number
   limitAmount?: number
   remark?: string
+}
+
+// 结算单费用明细
+export interface FeeDetailVO {
+  id: string
+  name: string
+  insuranceCode?: string
+  specification?: string
+  num: number
+  price: number
+  total: number
+  type: number
+  /** 本项报销金额(统筹) */
+  reimburse: number
+  /** 本项自付金额 */
+  selfPay: number
 }
 
 // 费用录入表单（含目录选择）

@@ -7,7 +7,7 @@
 | 模块一：基础数据完善 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块二：报销计算引擎重构 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块三：医保目录体系 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块四：结算单支付拆分 | ⬜ 待开始 | - | - |
+| 模块四：结算单支付拆分 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块五：支付流程改造 | ⬜ 待开始 | - | - |
 | 模块六：门诊/住院流程拓展 | ⬜ 待开始 | - | - |
 | 模块七：审核规则引擎 | ⬜ 待开始 | - | - |
@@ -132,3 +132,30 @@
 **遗漏风险**：
 - Excel/CSV批量导入接口暂未实现（目录种子数据已覆盖常用项目，按需再加）
 - 目录管理CRUD（增删改）未暴露前端接口，种子数据变更需直接操作数据库
+
+---
+
+### 模块四：结算单支付拆分 ✅ 2026-07-18
+
+**改动摘要**：结算单详情增加逐项费用拆分（对标真实医保结算单格式），支付扣款改为从 user.personal_account_balance 扣除。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| VO | `domain/vo/FeeDetailVO.java` | **新增**：id/name/insuranceCode/specification/num/price/total/type/reimburse/selfPay |
+| VO | `domain/vo/SettleVO.java` | +feeDetails(List\<FeeDetailVO\>)：查询详情时填充费用明细列表 |
+| Service | `SettleServiceImpl.java` | getSettleDetail 返回时调用 buildFeeDetails()；新增 buildFeeDetails() 方法：费用按类型拆分，甲/乙类按金额比例分配统筹支付，自费类统筹=0 |
+| Service | `UserAccountServiceImpl.java` | executePayWithTransaction 重写：扣款来源从 user_account 改为 user.personal_account_balance；同步更新 user_account 保持兼容 |
+| 前端 | `frontend/src/types/vo.ts` | 新增 FeeDetailVO 接口；SettleVO +feeDetails |
+
+**技术点落实**：
+- 费用拆分算法：甲/乙类总额比例 × 统筹支付总额 → 各项报销金额；自费项统筹=0
+- 个人账户扣款：deductAmt = min(payAmount, personalAccountBalance)；不足部分为现金自付
+- 支付幂等保持：仍使用消费记录表的 user+visit+type+status 四字段判重
+- 三层幂等/分布式锁/编程式事务体系不变
+- BeanUtils.copyProperties：SettleVO.poolingPay/accountPay/cashPay 自动从 PO 复制
+
+**遗漏风险**：
+- 列表查询不返回 feeDetails（仅详情接口返回），避免接口过重
+- user_account 表仍作为兼容层同步更新，模块五会彻底改造

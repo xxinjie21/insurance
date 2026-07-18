@@ -16,6 +16,7 @@ import com.xxj.insurance.domain.po.Settle;
 import com.xxj.insurance.domain.po.User;
 import com.xxj.insurance.domain.po.Visit;
 import com.xxj.insurance.domain.po.YearAccumulate;
+import com.xxj.insurance.domain.vo.FeeDetailVO;
 import com.xxj.insurance.domain.vo.SettleVO;
 import com.xxj.insurance.mapper.SettleMapper;
 import com.xxj.insurance.mapper.YearAccumulateMapper;
@@ -292,7 +293,7 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         return Result.ok(settle);
     }
 
-    // 查询结算详情（含就诊、患者、医院信息）
+    // 查询结算详情（含就诊、患者、医院信息 + 费用明细逐项拆分）
     @Override
     public Result getSettleDetail(Long visitId) {
         if (visitId == null) {
@@ -317,7 +318,60 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         }
 
         List<SettleVO> voList = enrichSettleVOList(Collections.singletonList(settle));
-        return Result.ok(voList.isEmpty() ? null : voList.get(0));
+        SettleVO vo = voList.isEmpty() ? null : voList.get(0);
+        if (vo != null) {
+            vo.setFeeDetails(buildFeeDetails(visitId));
+        }
+        return Result.ok(vo);
+    }
+
+    // 构建费用明细拆分：每项费用按比例分配统筹/自付
+    private List<FeeDetailVO> buildFeeDetails(Long visitId) {
+        LambdaQueryWrapper<Fee> feeWrapper = new LambdaQueryWrapper<>();
+        feeWrapper.eq(Fee::getVisitId, visitId);
+        List<Fee> feeList = feeService.list(feeWrapper);
+
+        // 计算参与统筹的总金额(甲+乙)
+        BigDecimal totalAB = BigDecimal.ZERO;
+        for (Fee fee : feeList) {
+            if (fee.getTotal() != null && fee.getType() != null && fee.getType() != 3) {
+                totalAB = totalAB.add(fee.getTotal());
+            }
+        }
+
+        // 从 settle 获取统筹支付总额
+        LambdaQueryWrapper<Settle> settleWrapper = new LambdaQueryWrapper<>();
+        settleWrapper.eq(Settle::getVisitId, visitId);
+        Settle settle = this.getOne(settleWrapper);
+        BigDecimal poolingTotal = settle != null && settle.getPoolingPay() != null
+                ? settle.getPoolingPay() : BigDecimal.ZERO;
+
+        // 逐项分配
+        List<FeeDetailVO> details = new ArrayList<>();
+        for (Fee fee : feeList) {
+            FeeDetailVO detail = new FeeDetailVO();
+            detail.setId(fee.getId());
+            detail.setName(fee.getName());
+            detail.setInsuranceCode(fee.getInsuranceCode());
+            detail.setSpecification(fee.getSpecification());
+            detail.setNum(fee.getNum());
+            detail.setPrice(fee.getPrice());
+            detail.setTotal(fee.getTotal());
+            detail.setType(fee.getType());
+
+            if (fee.getType() != null && fee.getType() != 3 && fee.getTotal() != null
+                    && totalAB.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal ratio = fee.getTotal().divide(totalAB, 6, RoundingMode.HALF_UP);
+                BigDecimal itemReimburse = poolingTotal.multiply(ratio).setScale(2, RoundingMode.HALF_UP);
+                detail.setReimburse(itemReimburse);
+                detail.setSelfPay(fee.getTotal().subtract(itemReimburse).setScale(2, RoundingMode.HALF_UP));
+            } else {
+                detail.setReimburse(BigDecimal.ZERO);
+                detail.setSelfPay(fee.getTotal() != null ? fee.getTotal() : BigDecimal.ZERO);
+            }
+            details.add(detail);
+        }
+        return details;
     }
 
     // 查询或创建年度累计记录

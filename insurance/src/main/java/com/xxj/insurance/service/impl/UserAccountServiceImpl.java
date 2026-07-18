@@ -227,19 +227,8 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
      * 执行支付事务
      * 修复：settle 从外部传入，避免重复查询
      */
-    // 支付事务体：扣余额 → 插消费记录 → 更新结算单/就诊状态
+    // 支付事务体：扣个人账户余额 → 插消费记录 → 更新结算单/就诊状态
     public Result executePayWithTransaction(Long userId, Long visitId, String remark, BigDecimal payAmount, Settle settle) {
-        UserAccount account = getOrCreateAccount(userId);
-
-        if (account.getStatus().equals(AccountConstants.ACCOUNT_STATUS_FROZEN)) {
-            return Result.fail("账户已被冻结，无法支付");
-        }
-
-        BigDecimal balance = account.getBalance() != null ? account.getBalance() : BigDecimal.ZERO;
-        if (balance.compareTo(payAmount) < 0) {
-            return Result.fail("账户余额不足，请充值后支付");
-        }
-
         // 结算单已标记自付完成则拒绝，防止重复扣款
         if (settle != null && settle.getStatus() >= ReimburseConstants.SETTLE_STATUS_SELF_PAID) {
             return Result.fail("该就诊已完成支付，请勿重复支付");
@@ -250,33 +239,53 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
                 .eq(ConsumptionRecord::getVisitId, visitId)
                 .eq(ConsumptionRecord::getType, AccountConstants.CONSUMPTION_TYPE_VISIT_PAY)
                 .eq(ConsumptionRecord::getStatus, AccountConstants.CONSUMPTION_STATUS_SUCCESS);
-        // 消费记录层二次校验，拦截并发下的重复提交
         if (consumptionRecordMapper.selectCount(paidWrapper) > 0) {
             return Result.fail("该就诊已支付，请勿重复支付");
         }
 
+        // 查询用户医保个人账户余额
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+        BigDecimal personalBalance = user.getPersonalAccountBalance() != null
+                ? user.getPersonalAccountBalance() : BigDecimal.ZERO;
+
+        // 实际扣款金额：min(支付金额, 个人账户余额)
+        BigDecimal actualDeduct = payAmount.compareTo(personalBalance) <= 0
+                ? payAmount : personalBalance;
+
         String orderNo = generateConsumptionOrderNo(userId);
 
-        BigDecimal balanceBefore = account.getBalance();
+        BigDecimal balanceBefore = personalBalance;
+        BigDecimal balanceAfter = personalBalance.subtract(actualDeduct);
 
-        BigDecimal newBalance = balanceBefore.subtract(payAmount);
-        BigDecimal newTotalConsumption = account.getTotalConsumption().add(payAmount);
+        // 更新用户医保个人账户余额
+        user.setPersonalAccountBalance(balanceAfter);
+        userMapper.updateById(user);
 
-        account.setBalance(newBalance);
-        account.setTotalConsumption(newTotalConsumption);
+        // 同步更新 user_account 表余额（兼容，模块五会全面改造）
+        UserAccount account = getOrCreateAccount(userId);
+        BigDecimal accountBalanceBefore = account.getBalance() != null ? account.getBalance() : BigDecimal.ZERO;
+        BigDecimal accountBalanceAfter = accountBalanceBefore.subtract(actualDeduct);
+        if (accountBalanceAfter.compareTo(BigDecimal.ZERO) < 0) {
+            accountBalanceAfter = BigDecimal.ZERO;
+        }
+        account.setBalance(accountBalanceAfter);
+        account.setTotalConsumption(account.getTotalConsumption().add(actualDeduct));
         account.setUpdateTime(LocalDateTime.now());
         this.updateById(account);
 
-        // 使用传入的 settle，不再重复查询（修复冗余查询）
+        // 消费记录（记录实际扣款来源：个人账户）
         ConsumptionRecord record = new ConsumptionRecord();
         record.setUserId(userId);
         record.setVisitId(visitId);
         record.setOrderNo(orderNo);
-        record.setAmount(payAmount);
+        record.setAmount(actualDeduct);
         record.setType(AccountConstants.CONSUMPTION_TYPE_VISIT_PAY);
         record.setStatus(AccountConstants.CONSUMPTION_STATUS_SUCCESS);
         record.setBalanceBefore(balanceBefore);
-        record.setBalanceAfter(newBalance);
+        record.setBalanceAfter(balanceAfter);
         record.setRemark(remark);
         record.setCreateTime(LocalDateTime.now());
 
@@ -290,7 +299,6 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
         if (settle != null) {
             settle.setStatus(ReimburseConstants.SETTLE_STATUS_SELF_PAID);
             settleService.updateById(settle);
-            // 更新就诊状态为"已结算"
             Visit visit = visitService.getById(settle.getVisitId());
             if (visit != null) {
                 visit.setStatus(ReimburseConstants.VISIT_STATUS_SETTLED);
@@ -299,7 +307,7 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountMapper, UserA
         }
 
         log.info("支付成功，userId: {}, orderNo: {}, amount: {}, balanceBefore: {}, balanceAfter: {}",
-            userId, orderNo, payAmount, balanceBefore, newBalance);
+            userId, orderNo, actualDeduct, balanceBefore, balanceAfter);
 
         return Result.ok("支付成功");
     }

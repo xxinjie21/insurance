@@ -4,6 +4,7 @@ import lombok.Data;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 结算单 VO - 包含关联的患者和就诊信息
@@ -34,4 +35,7 @@ public class SettleVO {
     private String hospitalName;
     private Integer visitType;
     private String diagnosis;
+
+    /** 费用明细列表（查询详情时填充） */
+    private List<FeeDetailVO> feeDetails;
 }
