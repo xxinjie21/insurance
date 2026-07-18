@@ -89,6 +89,8 @@ export interface BatchItemVO {
   batchId: string
   settleId: string
   audit: number
+  /** 审核调减金额 */
+  adjustAmount?: number
   patientName?: string
   patientIdCard?: string
   idCard?: string

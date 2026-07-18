@@ -10,7 +10,7 @@
 | 模块四：结算单支付拆分 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块五：支付流程改造 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块六：门诊/住院流程拓展 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块七：审核规则引擎 | ⬜ 待开始 | - | - |
+| 模块七：审核规则引擎 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块八：年度管理 | ⬜ 待开始 | - | - |
 | 模块九：异地就医 | ⬜ 待开始 | - | - |
 | 模块十：多层次保障 | ⬜ 待开始 | - | - |
@@ -223,3 +223,41 @@
 - 挂号后创建visit的流程由前端串联（先挂号→再创建就诊），后端未做自动关联
 - 出院退押金（deposit_total > total_fee时退差额）未实现计算逻辑
 - 住院费用未自动回填inpatient.total_fee字段
+
+---
+
+### 模块七：审核规则引擎 ✅ 2026-07-18
+
+**改动摘要**：新增规则驱动的智能审核引擎，支持诊断-药品匹配/重复用药/年龄限制/性别限制四类规则；拨付前自动审核并逐单调减金额。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| DDL | `int.sql` | 新增 `audit_rule` 表(8条种子数据)；`batch_item` ALTER ADD adjust_amount |
+| PO | `AuditRule.java` | **新增**：ruleType/description/paramKey/paramValue/severity/enabled |
+| PO | `BatchItem.java` | +adjustAmount(BigDecimal) |
+| Mapper | `AuditRuleMapper.java` | **新增** |
+| Service | `IAuditService.java` + Impl | **新增**：auditSettle(settle) 加载启用规则→逐规则检查→返回问题列表(含建议调减金额) |
+| Service | `PayServiceImpl.java` | 注入IAuditService；executePayBatchWithTransaction 新增审核步骤：逐结算单审核→severity=2的累计suggestDeductAmount→更新BatchItem.audit=1+adjustAmount |
+| VO | `BatchItemVO.java` | +adjustAmount |
+| Service | `BatchServiceImpl.java` | getBatchDetail 同步填充 adjustAmount |
+| Controller | `AuditController.java` | **新增**：GET /audit/settle/{settleId} 医保局审核单笔结算单 |
+| 前端 | `vo.ts` | BatchItemVO +adjustAmount |
+
+**规则类型实现**：
+- DIAG_DRUG_MATCH：诊断含paramKey时，费用必须在允许列表内，否则预警+建议调减50%
+- DUPLICATE_DRUG：paramKey和paramValue代表的两类药同时出现→预警
+- AGE_RESTRICT：费用含受限药品时预警
+- SEX_RESTRICT：费用含受限制药品时预警
+
+**技术点落实**：
+- 规则驱动：审核逻辑全由 audit_rule 表配置，新增规则只需插数据不改代码
+- 逐单审核：每个BatchItem独立调用auditSettle，调减金额记录在adjustAmount，audit=1标记扣款
+- 拨付前审核：审核步骤在Pay记录创建之前执行，调减结果写入BatchItem后跟随批次一起拨付
+- 审核结果含feeId/feeName/suggestDeductAmount，前端可展示逐项审核详情
+- @Permission 注解：审核接口限医保局/管理员角色
+
+**遗漏风险**：
+- review_rule 管理CRUD未暴露接口，规则通过SQL维护
+- 审核结果未写入单独的 audit_result 表（仅记录在BatchItem上）

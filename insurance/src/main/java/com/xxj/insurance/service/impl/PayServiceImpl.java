@@ -11,6 +11,7 @@ import com.xxj.insurance.domain.po.Settle;
 import com.xxj.insurance.mapper.PayMapper;
 import com.xxj.insurance.service.IBatchItemService;
 import com.xxj.insurance.service.IBatchService;
+import com.xxj.insurance.service.IAuditService;
 import com.xxj.insurance.service.IPayService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.xxj.insurance.service.ISettleService;
@@ -24,7 +25,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -46,6 +49,7 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, Pay> implements IPayS
     private final IBatchService batchService;
     private final IBatchItemService batchItemService;
     private final ISettleService settleService;
+    private final IAuditService auditService;
     private final RedissonClient redissonClient;
     private final TransactionTemplate transactionTemplate;
 
@@ -136,6 +140,29 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, Pay> implements IPayS
             return Result.fail("批次金额必须大于 0");
         }
 
+        // 审核：逐单检查结算单，更新BatchItem审计结果
+        List<BatchItem> items = batchItemService.lambdaQuery()
+                .eq(BatchItem::getBatchId, batchId).list();
+        for (BatchItem item : items) {
+            Settle itemSettle = settleService.getById(item.getSettleId());
+            if (itemSettle != null) {
+                List<Map<String, Object>> findings = auditService.auditSettle(itemSettle);
+                BigDecimal totalDeduct = BigDecimal.ZERO;
+                for (Map<String, Object> f : findings) {
+                    if (f.get("severity") != null && (Integer) f.get("severity") == 2) {
+                        BigDecimal deduct = f.get("suggestDeductAmount") instanceof BigDecimal
+                                ? (BigDecimal) f.get("suggestDeductAmount") : BigDecimal.ZERO;
+                        totalDeduct = totalDeduct.add(deduct);
+                    }
+                }
+                if (totalDeduct.compareTo(BigDecimal.ZERO) > 0) {
+                    item.setAudit(1);
+                    item.setAdjustAmount(totalDeduct.setScale(2, java.math.RoundingMode.HALF_UP));
+                    batchItemService.updateById(item);
+                }
+            }
+        }
+
         // 创建或更新拨付记录（可重复调用）
         Pay pay = existPay == null ? new Pay() : existPay;
         if (existPay == null) {
@@ -156,11 +183,7 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, Pay> implements IPayS
         batch.setStatus(ReimburseConstants.BATCH_STATUS_COMPLETED);
         batchService.updateById(batch);
 
-        // 批量查结算单，避免 N+1
-        LambdaQueryWrapper<BatchItem> itemWrapper = new LambdaQueryWrapper<>();
-        itemWrapper.eq(BatchItem::getBatchId, batchId);
-        List<BatchItem> items = batchItemService.list(itemWrapper);
-
+        // 批量更新结算单状态（复用前面审核时已加载的items）
         List<Long> settleIds = items.stream()
                 .map(BatchItem::getSettleId)
                 .collect(Collectors.toList());

@@ -382,6 +382,7 @@ public class BatchServiceImpl extends ServiceImpl<BatchMapper, Batch> implements
                 vo.setBatchId(item.getBatchId());
                 vo.setSettleId(item.getSettleId());
                 vo.setAudit(item.getAudit());
+                vo.setAdjustAmount(item.getAdjustAmount());
                 vo.setCreateTime(item.getCreateTime());
 
                 Settle settle = settleMap.get(item.getSettleId());

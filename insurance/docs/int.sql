@@ -511,3 +511,32 @@ CREATE TABLE `inpatient_deposit` (
 -- 押金种子数据
 INSERT INTO `inpatient_deposit` (`inpatient_id`, `amount`, `type`, `remark`, `create_time`) VALUES
 (1, 2000.00, 1, '入院押金', NOW());
+
+-- 修改 batch_item 表：增加调减金额字段
+ALTER TABLE `batch_item` ADD COLUMN `adjust_amount` DECIMAL(10,2) DEFAULT 0.00 COMMENT '审核调减金额';
+
+-- ----------------------------
+-- 20. 审核规则表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `audit_rule`;
+CREATE TABLE `audit_rule` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `rule_type` VARCHAR(32) NOT NULL COMMENT '规则类型：DIAG_DRUG_MATCH-诊断药品匹配 / DUPLICATE_DRUG-重复用药 / AGE_RESTRICT-年龄限制 / SEX_RESTRICT-性别限制',
+    `description` VARCHAR(255) NOT NULL COMMENT '规则描述',
+    `param_key` VARCHAR(128) DEFAULT NULL COMMENT '参数键（如诊断名/药品名）',
+    `param_value` VARCHAR(512) DEFAULT NULL COMMENT '参数值（JSON或具体值）',
+    `severity` TINYINT NOT NULL DEFAULT 1 COMMENT '严重程度：1-预警 2-扣款',
+    `enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用：0-禁用 1-启用',
+    PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='审核规则表';
+
+-- 审核规则种子数据
+INSERT INTO `audit_rule` (`rule_type`, `description`, `param_key`, `param_value`, `severity`, `enabled`) VALUES
+('DIAG_DRUG_MATCH', '高血压：硝苯地平/氨氯地平/厄贝沙坦适用', '高血压', '硝苯地平,氨氯地平,厄贝沙坦', 2, 1),
+('DIAG_DRUG_MATCH', '上呼吸道感染：阿莫西林/头孢克洛/布洛芬/对乙酰氨基酚适用', '上呼吸道感染', '阿莫西林,头孢克洛,布洛芬,对乙酰氨基酚', 2, 1),
+('DIAG_DRUG_MATCH', '高胆固醇血症：阿托伐他汀/瑞舒伐他汀适用', '高胆固醇血症', '阿托伐他汀,瑞舒伐他汀', 2, 1),
+('DIAG_DRUG_MATCH', '糖尿病：胰岛素适用', '糖尿病', '胰岛素', 2, 1),
+('DUPLICATE_DRUG', '阿莫西林与头孢克洛同为抗生素，不建议重复使用', '阿莫西林', '头孢克洛', 1, 1),
+('DUPLICATE_DRUG', '硝苯地平与氨氯地平同为钙通道阻滞剂，不建议重复使用', '硝苯地平', '氨氯地平', 1, 1),
+('AGE_RESTRICT', '阿托伐他汀限18岁以上使用', '阿托伐他汀', '18', 2, 1),
+('AGE_RESTRICT', '瑞舒伐他汀限18岁以上使用', '瑞舒伐他汀', '18', 2, 1);

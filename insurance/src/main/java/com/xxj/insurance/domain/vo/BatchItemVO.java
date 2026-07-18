@@ -14,6 +14,8 @@ public class BatchItemVO {
     private Long batchId;
     private Long settleId;
     private Integer audit;
+    /** 审核调减金额 */
+    private BigDecimal adjustAmount;
 
     // 关联结算单信息
     private BigDecimal settleTotal;
