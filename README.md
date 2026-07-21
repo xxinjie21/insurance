@@ -22,7 +22,7 @@
 
 ## 项目介绍
 
-本项目是一个 **医保核销系统**，面向医疗机构的医保费用结算中台，��盖门诊就诊结算、医保批次申报、财政基金拨付全流程数字化。包含 Spring Boot 后端 + Vue 3 前端，共 **20 个 Controller、55 个 API 接口、27 张数据库表**。
+本项目是一个 **医保核销系统**，面向医疗机构的医保费用结算中台，覆盖门诊就诊结算、医保批次申报、财政基金拨付全流程数字化。包含 Spring Boot 后端 + Vue 3 前端，共 **20 个 Controller、55 个 API 接口、27 张数据库表**。
 
 ### 系统角色
 
@@ -58,7 +58,7 @@ Redis 预校验 → Redisson 分布式锁(单据级) → 数据库唯一索引
 ### 2. 编程式事务保证缓存一致性
 
 - `@Transactional` 回滚时无法撤销已写入的 Redis 缓存
-- 改用 `TransactionTemplate`，仅事务提交成功后才写入幂等缓存
+- 改用 `TransactionTemplate`，仅事务提交成功后才写入���等缓存
 
 ### 3. 操作日志 AOP
 
@@ -256,7 +256,7 @@ npm run dev
 
 | 方法 | URL | 权限 | 说明 |
 |------|-----|------|------|
-| POST | `/hospital/sign` | 公开 | ��院注册 |
+| POST | `/hospital/sign` | 公开 | 医院注册 |
 | GET | `/hospital/list` | 登录 | 医院列表 |
 | GET | `/hospital/patient/list` | 医院/管理员 | 本院患者 |
 | POST | `/hospital/approve/{id}` | 医保局/管理员 | 审批通过 |
@@ -464,7 +464,7 @@ insurance/
 
 ### Q: 结算接口返回重复提交？
 
-检查 Redisson 是否启动，检查分布式锁 Key 设计，检查 `operation_log` 表确认操作记录。
+检查 Redisson 是否启动，��查分布式锁 Key 设计，检查 `operation_log` 表确认操作记录。
 
 ### Q: 前端页面空白？
 
