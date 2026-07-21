@@ -686,3 +686,23 @@ CREATE TABLE `operation_log` (
     KEY `idx_op_user` (`user_id`),
     KEY `idx_op_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
+
+-- ----------------------------
+-- 27. RabbitMQ 事务消息表（新增）
+-- ----------------------------
+DROP TABLE IF EXISTS `mq_outbox`;
+CREATE TABLE `mq_outbox` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键',
+    `message_id` VARCHAR(64) NOT NULL COMMENT '消息ID(UUID)',
+    `exchange` VARCHAR(64) NOT NULL COMMENT '交换机名称',
+    `routing_key` VARCHAR(64) NOT NULL COMMENT '路由键',
+    `payload` TEXT NOT NULL COMMENT '消息体JSON',
+    `status` TINYINT DEFAULT 0 COMMENT '状态：0-待发送 1-已发送 2-发送失败',
+    `retry_count` INT DEFAULT 0 COMMENT '重试次数',
+    `error_msg` VARCHAR(500) DEFAULT NULL COMMENT '失败原因',
+    `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_message_id` (`message_id`),
+    KEY `idx_status_retry` (`status`, `retry_count`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ事务消息表';

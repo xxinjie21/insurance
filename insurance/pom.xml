@@ -89,6 +89,12 @@
             <version>3.17.7</version>
         </dependency>
 
+        <!-- RabbitMQ 异步消息 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-amqp</artifactId>
+        </dependency>
+
         <!-- BCrypt 密码加密（替代 MD5） -->
         <dependency>
             <groupId>org.springframework.security</groupId>

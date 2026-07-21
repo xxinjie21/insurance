@@ -10,6 +10,15 @@
 - [6. 批次模块](#6-批次模块)
 - [7. 拨付模块](#7-拨付模块)
 - [8. 账户模块](#8-账户模块)
+- [9. 目录模块](#9-目录模块)
+- [10. 挂号模块](#10-挂号模块)
+- [11. 住院模块](#11-住院模块)
+- [12. 审核模块](#12-审核模块)
+- [13. 异地就医模块](#13-异地就医模块)
+- [14. 退费模块](#14-退费模块)
+- [15. 处方模块](#15-处方模块)
+- [16. 报表模块](#16-报表模块)
+- [17. 年度管理模块](#17-年度管理模块)
 
 ---
 
@@ -58,8 +67,10 @@ token: {登录后获取的token}  // 除登录、注册外都需要
 {
   "name": "张三",
   "password": "123456",
+  "phone": "13800001111",
   "idCard": "110101199001011234",
-  "role": 1
+  "role": 1,
+  "insuranceType": 1
 }
 ```
 
@@ -347,6 +358,11 @@ pageNum=1&pageSize=10&patientName=张三
     "total": 56.00,
     "reimburse": 56.00,
     "selfPay": 0.00,
+    "poolingPay": 56.00,
+    "accountPay": 0.00,
+    "cashPay": 0.00,
+    "catastrophicPay": 0.00,
+    "assistancePay": 0.00,
     "status": 0
   }
 }
@@ -738,3 +754,184 @@ pageNum=1&pageSize=10
 - **Postman**: 接口测试
 - **JMeter**: 压力测试
 - **Apifox**: 接口文档+测试
+
+---
+
+## 9. 目录模块
+
+### 9.1 药品目录查询
+
+**接口**: `GET /catalog/drug/list?keyword=阿莫西林`
+
+**权限**: 医院、医保局、管理员
+
+| 案例 | 预期结果 |
+|------|----------|
+| 正常查询 | success=true, 返回匹配药品列表（含编码/名称/规格/厂家/甲乙分类） |
+| 无匹配 | success=true, 空列表 |
+| 空关键字 | 返回全量（分页30条） |
+
+### 9.2 诊疗/耗材目录
+
+**接口**: `GET /catalog/treatment/list?keyword=血常规` / `GET /catalog/consumable/list`
+
+---
+
+## 10. 挂号模块
+
+### 10.1 新增挂号
+
+**接口**: `POST /registration/add`
+
+```json
+{"idCard":"110101199001011234","hospitalId":1,"dept":"呼吸内科","doctorName":"王医生","regType":1}
+```
+
+**权限**: 医院、管理员
+
+| 案例 | 预期结果 |
+|------|----------|
+| 普通门诊 | regType=1, regFee=15.00 |
+| 专家门诊 | regType=2, regFee=30.00 |
+| 患者不存在 | errorMsg="患者不存在" |
+
+### 10.2 挂号列表
+
+**接口**: `GET /registration/hospital/list` / `GET /registration/my/list`
+
+---
+
+## 11. 住院模块
+
+### 11.1 入院登记
+
+**接口**: `POST /inpatient/admit`
+
+```json
+{"visitId":3,"userId":1,"hospitalId":1,"bedNo":"301-01"}
+```
+
+| 案例 | 预期结果 |
+|------|----------|
+| 正常入院 | 返回住院号(IP+日期+4位随机) |
+| 非住院类型就诊 | errorMsg="非住院类型就诊，无法入院" |
+| 已入院 | errorMsg="该就诊已入院" |
+
+### 11.2 缴纳押金
+
+**接口**: `POST /inpatient/deposit`
+
+```json
+{"inpatientId":1,"amount":1000.00,"remark":"续费"}
+```
+
+### 11.3 出院结算
+
+**接口**: `POST /inpatient/discharge/{inpatientId}`
+
+- 事务内汇总费用→调用 settleService.calculate()→更新状态
+
+---
+
+## 12. 审核模块
+
+### 12.1 审核结算单
+
+**接口**: `GET /audit/settle/{settleId}`
+
+**权限**: 医保局、管理员
+
+| 案例 | 预期结果 |
+|------|----------|
+| 正常审核 | 返回问题列表（规则描述/严重程度/费用/建议调减金额） |
+| 无问题 | 空数组 |
+
+---
+
+## 13. 异地就医模块
+
+### 13.1 异地备案
+
+**接口**: `POST /remote-filing/file`
+
+```json
+{"insuredCity":"南昌市","treatmentCity":"南昌市","treatmentHospitalId":1}
+```
+
+### 13.2 查询备案 / 取消备案
+
+**接口**: `GET /remote-filing/my` / `POST /remote-filing/cancel/{id}`
+
+---
+
+## 14. 退费模块
+
+### 14.1 申请退款
+
+**接口**: `POST /refund/apply`
+
+```json
+{"settleId":1,"refundAmount":20.00,"reason":"退药"}
+```
+
+- 自动按比例拆分 poolingRefund/accountRefund/cashRefund
+
+### 14.2 审批通过 / 拒绝
+
+**接口**: `POST /refund/approve/{id}` (医保局) / `POST /refund/reject/{id}`
+
+- approve: 统筹退累计 + 个账退余额 + 更新结算单
+
+---
+
+## 15. 处方模块
+
+### 15.1 医生开方
+
+**接口**: `POST /prescription/prescribe`
+
+```json
+{"visitId":1,"doctorId":1}
+```
+
+- 校验医生归属医院 + 状态正常
+
+### 15.2 药师审方 / 驳回
+
+**接口**: `POST /prescription/approve/{id}` / `POST /prescription/reject/{id}`
+
+### 15.3 处方列表
+
+**接口**: `GET /prescription/list/{visitId}`
+
+---
+
+## 16. 报表模块
+
+### 16.1 基金收支报表
+
+**接口**: `GET /report/fund?year=2026&month=7`
+
+**权限**: 医保局、管理员
+
+**响应**: 统筹/大病/救助分项 + 按医院聚合
+
+### 16.2 费用构成 / 就诊统计
+
+**接口**: `GET /report/fee-composition?year=2026` / `GET /report/visit-stats?year=2026`
+
+---
+
+## 17. 年度管理模块
+
+### 17.1 年度结转
+
+**接口**: `POST /year-end/rollover`
+
+**权限**: 医保局、管理员
+
+- 事务内清 year_accumulate + 个账计息 1.5%
+
+### 17.2 年度对账
+
+**接口**: `GET /year-end/reconcile?year=2026`

@@ -18,7 +18,7 @@
 
 ### 1.1 项目背景
 
-医保核销系统是一个完整的医疗保险费用结算与管理平台，实现了从患者就诊、费用录入、医保结算、批次申报到基金拨付的全流程数字化管理。
+医保核销系统是一个完整的医疗保险费用结算与管理平台，实现了从患者挂号、费用录入、规则引擎驱动医保结算、批次申报审核、基金拨付、异地就医、大病救助、退费到报表审计的全流程数字化管理。系统已按15个模块完成贴近现实医保业务的改造。
 
 ### 1.2 核心业务流程
 
@@ -55,10 +55,10 @@
 
 | 角色 | 标识 | 职责 | 主要功能 |
 |------|------|------|----------|
-| 患者 | PATIENT(1) | 就诊、支付 | 挂号、充值、查询费用、支付自付部分 |
-| 医院 | HOSPITAL(2) | 诊疗、申报 | 录入费用、医保结算、创建批次、申报 |
-| 医保局 | MEDICAL(3) | 审核、拨付 | 审核批次、基金拨付、拒绝申请 |
-| 管理员 | ADMIN(4) | 系统管理 | 管理医院、代理操作 |
+| 患者 | PATIENT(1) | 就诊、支付 | 挂号、查询费用、支付自付部分、异地备案 |
+| 医院 | HOSPITAL(2) | 诊疗、申报 | 挂号管理、医生开方、录入费用、医保结算、创建批次、申报、住院管理 |
+| 医保局 | MEDICAL(3) | 审核、拨付 | 审核批次、智能审核结算单、基金拨付、拒绝申请、统计报表 |
+| 管理员 | ADMIN(4) | 系统管理 | 管理医院、代理操作、年度结转 |
 
 ---
 
@@ -77,6 +77,7 @@
 | Hutool | 5.7.17 | 工具库 | 日期、字符串、加密等工具 |
 | Lombok | 1.18.44 | 代码简化 | 自动生成getter/setter/构造方法 |
 | BCrypt | 5.7.11 | 密码加密 | 安全性高、自带盐值 |
+| RabbitMQ | 3.x (spring-boot-starter-amqp) | 异步消息 | 主链路异步化、Confirm+ACK、DLX兜底 |
 
 ### 2.2 前端技术栈
 
@@ -165,10 +166,12 @@ com.xxj.insurance
 │   ├── config                     # 配置类
 │   │   ├── MvcConfig.java        # MVC配置（拦截器、跨域）
 │   │   ├── RedissonConfig.java   # Redisson配置
+│   │   ├── RabbitMQConfig.java   # RabbitMQ交换机/队列/DLX声明
 │   │   └── PasswordConfig.java   # 密码加密配置
 │   ├── constants                  # 常量定义
 │   │   ├── RedisConstants.java   # Redis Key前缀
-│   │   └── ReimburseConstants.java # 业务常量
+│   │   ├── ReimburseConstants.java # 报销业务常量
+│   │   └── AccountConstants.java # 账户常量（个账初始余额/流水类型）
 │   ├── domain                     # 通用领域对象
 │   │   ├── Result.java           # 统一响应
 │   │   └── PageDTO.java          # 分页DTO
@@ -179,6 +182,11 @@ com.xxj.insurance
 │   │   └── GlobalExceptionHandler.java
 │   ├── interceptors               # 拦截器
 │   │   └── UserInfoInterceptor.java
+│   ├── mq                         # RabbitMQ消息组件
+│   │   ├── MqMessageSender.java  # 消息发送器（outbox+Confirm）
+│   │   ├── MqIdempotentHelper.java # 消费幂等（Redisson）
+│   │   ├── MqConsumers.java      # 4个业务队列消费者
+│   │   └── MqRetryJob.java       # 兜底补偿定时任务
 │   └── utils                      # 工具类
 │       ├── UserHolder.java       # 用户上下文
 │       └── JwtUtil.java          # JWT工具
@@ -538,61 +546,69 @@ String roleStr = redisTemplate.opsForValue().get("login:role:" + userId);
 
 ### 5.2 结算模块
 
-#### 5.2.1 结算计算流程
+#### 5.2.1 结算计算流程（规则引擎驱动）
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        结算计算流程                          │
+│                   结算计算流程（规则引擎）                     │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  1. 幂等校验                                                 │
+│  1. 幂等校验（三层）                                         │
 │     ├─ Redis预检查                                          │
 │     ├─ 获取分布式锁                                         │
 │     └─ 数据库校验                                           │
 │                                                             │
-│  2. 权限校验                                                 │
-│     └─ 只有医院/管理员可以结算                               │
+│  2. 规则引擎加载                                             │
+│     ├─ 查询用户参保类型（职工/居民）                          │
+│     ├─ 查询医院等级（三甲/二甲/社区）                         │
+│     └─ 匹配 reimburse_rule 表规则                           │
 │                                                             │
-│  3. 费用计算                                                 │
-│     ├─ 遍历费用明细                                         │
-│     ├─ 按类型计算报销比例                                   │
-│     │   ├─ 甲类：100%                                       │
-│     │   ├─ 乙类：80%                                        │
-│     │   └─ 自费：0%                                         │
-│     └─ 累加后四舍五入                                       │
+│  3. 四层报销计算                                             │
+│     ├─ 第一层 基本统筹：起付线→报销比例→封顶线               │
+│     ├─ 第二层 大病保险：封顶线用完自动进入，60%报销           │
+│     ├─ 第三层 医疗救助：困难群体额外70%报销                   │
+│     └─ 第四层 患者自付：个账优先→现金支付                    │
 │                                                             │
-│  4. 保存结算单                                               │
-│     └─ 状态：待申报                                         │
+│  4. 异地校验                                                 │
+│     └─ 参保地≠就医地 → 查 remote_medical_filing 备案         │
 │                                                             │
-│  5. 事务提交后                                               │
-│     ├─ 写入幂等标记                                         │
-│     └─ 清理缓存                                             │
+│  5. 年度累计更新                                             │
+│     └─ year_accumulate 表更新起付线累计 + 统筹支付累计        │
+│                                                             │
+│  6. MQ异步                                                   │
+│     └─ 结算完成 → 发 MQ 归档/稽核任务                        │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-#### 5.2.2 金额计算逻辑
+**代码位置**：[`SettleServiceImpl.java:168-332`](../insurance/src/main/java/com/xxj/insurance/service/impl/SettleServiceImpl.java#L168)
 
-```java
-BigDecimal totalAmount = BigDecimal.ZERO;
-BigDecimal reimburseAmountRaw = BigDecimal.ZERO;
+#### 5.2.2 报销规则表 (reimburse_rule)
 
-for (Fee fee : feeList) {
-    totalAmount = totalAmount.add(fee.getTotal());
-    BigDecimal rate = getReimburseRate(fee.getType());
-    BigDecimal reimburse = fee.getTotal().multiply(rate);
-    reimburseAmountRaw = reimburseAmountRaw.add(reimburse);
-}
+24条规则覆盖职工/居民 × 6个医院等级 × 门诊/住院：
 
-// 先累加再四舍五入，避免累积误差
-BigDecimal reimburseAmount = reimburseAmountRaw.setScale(2, RoundingMode.HALF_UP);
-BigDecimal selfPayAmount = totalAmount.subtract(reimburseAmount).setScale(2, RoundingMode.HALF_UP);
-```
+| 参保类型 | 医院等级 | 就诊 | 起付线 | 报销比例 | 封顶线 |
+|---------|---------|------|--------|---------|--------|
+| 职工 | 三甲 | 门诊 | 300 | 55% | 2000 |
+| 职工 | 三甲 | 住院 | 800 | 85% | 300,000 |
+| 职工 | 社区 | 门诊 | 0 | 75% | 2000 |
+| 居民 | 三甲 | 住院 | 600 | 75% | 150,000 |
 
-**设计思想**：
-- 使用 `BigDecimal` 避免浮点精度问题
-- 先累加所有费用，最后统一四舍五入
-- 避免每条费用单独四舍五入导致的累积误差
+### 5.3 新增模块概览
+
+| 模块 | 核心文件 | 功能 |
+|------|---------|------|
+| 医保目录 | `CatalogServiceImpl.java` | 药品/诊疗/耗材三大目录模糊搜索，费用录入选目录自动回填 |
+| 挂号管理 | `RegistrationServiceImpl.java` | 门诊挂号（普通15元/专家30元），医事服务费独立计算 |
+| 住院管理 | `InpatientServiceImpl.java` | 入院登记→押金缴纳→出院结算（调settleService） |
+| 审核引擎 | `AuditServiceImpl.java` | 诊断-药品匹配/重复用药/年龄限制，拨付前逐单审核 |
+| 年度管理 | `YearEndServiceImpl.java` | 起付线封顶线归零、个账1.5%计息、对账报表 |
+| 异地就医 | `RemoteFilingServiceImpl.java` | 备案→结算时校验→无备案拒绝 |
+| 多层次保障 | `SettleServiceImpl.java`（扩展） | 大病保险60%/医疗救助70% |
+| 退费体系 | `RefundServiceImpl.java` | 申请→审批→原路退回（统筹/个账/现金三方） |
+| 医生处方 | `PrescriptionServiceImpl.java` | 医生开方→药师审核→处方关联费用 |
+| 统计报表 | `ReportServiceImpl.java` | 基金收支/费用构成/就诊统计 |
+| MQ异步 | `MqMessageSender.java` + `MqConsumers.java` | outbox+Confirm+手动ACK+DLX+兜底Job |
 
 ### 5.3 批次模块
 
@@ -668,23 +684,29 @@ public Result pay(Long visitId) {
 
 ### 6.1 核心表结构
 
-#### 6.1.1 用户表 (user)
+#### 6.1.1 用户表 (user) — 已扩展
 
 ```sql
 CREATE TABLE `user` (
   `id` bigint NOT NULL COMMENT '用户ID',
-  `password` varchar(255) NOT NULL COMMENT '密码（BCrypt加密）',
-  `name` varchar(50) NOT NULL COMMENT '姓名',
+  `password` varchar(64) NOT NULL COMMENT '密码（BCrypt加密）',
+  `name` varchar(32) NOT NULL COMMENT '姓名',
+  `phone` varchar(20) DEFAULT NULL COMMENT '手机号',
   `id_card` varchar(18) NOT NULL COMMENT '身份证号',
-  `hospital_id` bigint DEFAULT NULL COMMENT '所属医院ID（医院角色）',
-  `role` tinyint NOT NULL COMMENT '角色：1患者 2医院 3医保局 4管理员',
+  `hospital_id` bigint DEFAULT NULL COMMENT '所属医院ID',
+  `role` tinyint NOT NULL COMMENT '1患者 2医院 3医保局 4管理员',
+  `insurance_type` tinyint DEFAULT NULL COMMENT '参保类型：1-职工 2-居民',
+  `insurance_no` varchar(32) DEFAULT NULL COMMENT '医保编号',
+  `insurance_city` varchar(32) DEFAULT NULL COMMENT '参保地',
+  `personal_account_balance` decimal(12,2) DEFAULT 0.00 COMMENT '个人账户余额',
+  `medical_assistance` tinyint DEFAULT 0 COMMENT '医疗救助标记',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_id_card` (`id_card`)
 );
 ```
 
-#### 6.1.2 结算表 (settle)
+#### 6.1.2 结算表 (settle) — 已扩展
 
 ```sql
 CREATE TABLE `settle` (
@@ -692,31 +714,36 @@ CREATE TABLE `settle` (
   `visit_id` bigint NOT NULL COMMENT '就诊ID',
   `hospital_id` bigint NOT NULL COMMENT '医院ID',
   `total` decimal(10,2) NOT NULL COMMENT '总金额',
-  `reimburse` decimal(10,2) NOT NULL COMMENT '报销金额',
+  `reimburse` decimal(10,2) NOT NULL COMMENT '报销金额(统筹)',
   `self_pay` decimal(10,2) NOT NULL COMMENT '自付金额',
-  `status` tinyint NOT NULL COMMENT '状态：0待申报 1已申报 2已自付 3已拨付',
+  `pooling_pay` decimal(10,2) DEFAULT 0.00 COMMENT '统筹支付',
+  `account_pay` decimal(10,2) DEFAULT 0.00 COMMENT '个账支付',
+  `cash_pay` decimal(10,2) DEFAULT 0.00 COMMENT '现金支付',
+  `catastrophic_pay` decimal(10,2) DEFAULT 0.00 COMMENT '大病支付',
+  `assistance_pay` decimal(10,2) DEFAULT 0.00 COMMENT '救助支付',
+  `status` tinyint NOT NULL COMMENT '0待申报 1已申报 2已自付 3已拨付',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_visit_id` (`visit_id`),
-  KEY `fk_settle_hospital` (`hospital_id`)
+  UNIQUE KEY `uk_visit_id` (`visit_id`)
 );
 ```
 
-#### 6.1.3 批次表 (batch)
+#### 6.1.3 新增核心表（共27张）
 
-```sql
-CREATE TABLE `batch` (
-  `id` bigint NOT NULL COMMENT '批次ID',
-  `hospital_id` bigint NOT NULL COMMENT '医院ID',
-  `batch_no` varchar(30) NOT NULL COMMENT '批次号',
-  `settle_cnt` int DEFAULT 0 COMMENT '结算单数量',
-  `total_amt` decimal(12,2) DEFAULT 0 COMMENT '总金额',
-  `status` tinyint NOT NULL COMMENT '状态：0待申报 1已申报 2已完成 3拨付拒绝',
-  `create_time` datetime DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_batch_no` (`batch_no`),
-  KEY `idx_hospital_id` (`hospital_id`)
-);
+| 表名 | 用途 |
+|------|------|
+| `reimburse_rule` | 报销规则（24条/职工居民×6等级×门诊住院） |
+| `year_accumulate` | 年度起付线/统筹累计（按用户+年份唯一） |
+| `drug_catalog` / `treatment_catalog` / `consumable_catalog` | 三大医保目录 |
+| `registration` | 门诊挂号 |
+| `inpatient` / `inpatient_deposit` | 住院管理 + 押金 |
+| `audit_rule` | 审核规则（诊断匹配/重复用药/年龄性别限制） |
+| `doctor` / `prescription` | 医生 + 处方 |
+| `remote_medical_filing` | 异地就医备案 |
+| `chronic_disease_cert` | 慢特病认定 |
+| `refund` | 退款（统筹/个账/现金三方） |
+| `operation_log` | 操作审计日志 |
+| `mq_outbox` | RabbitMQ事务消息表 |
 ```
 
 ### 6.2 索引设计原则
@@ -921,9 +948,61 @@ log.warn("缓存解析失败 key:{}", cacheKey, e);
 
 ---
 
-## 10. 总结
+## 10. RabbitMQ 异步消息架构
 
-本项目采用经典的分层架构，结合Spring Boot生态，实现了医保核销的全流程管理。核心设计思想包括：
+### 10.1 MQ 拓扑
+
+```
+Exchange: insurance.settle.direct (durable direct)
+  ├── queue.outpatient.settle  ← routingKey: settle.outpatient   → DLQ: queue.outpatient.settle.dlq
+  ├── queue.remote.settle      ← routingKey: settle.remote       → DLQ: queue.remote.settle.dlq
+  ├── queue.batch.reconcile    ← routingKey: batch.reconcile     → DLQ: queue.batch.reconcile.dlq
+  └── queue.audit.notify       ← routingKey: audit.notify
+
+DLX: insurance.dlx.direct (durable direct)
+```
+
+### 10.2 消息流转
+
+```
+业务操作(事务内)
+    │
+    ├─ 写业务数据
+    ├─ 写 mq_outbox (status=0)
+    │
+    ▼ (事务提交后)
+MqMessageSender.sendAfterCommit()
+    │
+    ├─ rabbitTemplate.convertAndSend()
+    ├─ Confirm回调 → onSuccess: outbox.status=1 / onFailure: outbox.status=2
+    │
+    ▼
+消费者 MqConsumers.onXxx()
+    │
+    ├─ 幂等: idempotentHelper.tryConsume(messageId) → Redis idempotent:mq:{id}
+    ├─ 成功: channel.basicAck()
+    └─ 失败: channel.basicNack() → DLQ
+           │
+           └─ MqRetryJob @Scheduled(5min) 补推 outbox status IN (0,2)
+```
+
+### 10.3 代码文件
+
+| 文件 | 说明 |
+|------|------|
+| [`RabbitMQConfig.java`](../insurance/src/main/java/com/xxj/insurance/common/config/RabbitMQConfig.java) | 交换机/队列/DLX声明 |
+| [`MqMessageSender.java`](../insurance/src/main/java/com/xxj/insurance/common/mq/MqMessageSender.java) | 消息发送（outbox+Confirm） |
+| [`MqIdempotentHelper.java`](../insurance/src/main/java/com/xxj/insurance/common/mq/MqIdempotentHelper.java) | Redisson幂等去重 |
+| [`MqConsumers.java`](../insurance/src/main/java/com/xxj/insurance/common/mq/MqConsumers.java) | 手动ACK消费 |
+| [`MqRetryJob.java`](../insurance/src/main/java/com/xxj/insurance/common/mq/MqRetryJob.java) | @Scheduled兜底补偿 |
+
+---
+
+## 11. 总结
+
+本项目经过15个模块改造，从基础数据模型到报销规则引擎、医保目录、门诊住院、智能审核、异地就医、多层次保障、退费、报表审计、RabbitMQ异步消息——全面贴近现实医保核销业务。
+
+核心设计思想：
 
 1. **统一响应**：便于前端统一处理成功/失败/异常
 2. **注解式权限**：@Permission + SpringMVC 拦截器，Controller/Method 级声明式权限校验
@@ -932,5 +1011,8 @@ log.warn("缓存解析失败 key:{}", cacheKey, e);
 5. **事务与缓存一致性**：编程式事务 + 提交后写缓存，解决回滚导致 Redis 脏数据问题
 6. **缓存穿透防护**：Cache-Aside 模式 + 空值短 TTL 缓存，防止不存在的数据击穿 DB
 7. **N+1 查询消除**：ID 聚合 → 批量加载 → Map 映射，多级关联查询从 O(N) 降至常数级
+8. **规则引擎驱动**：报销参数由 reimburse_rule 表配置，替代硬编码固定比例
+9. **MQ 异步化**：outbox+Confirm+手动ACK+DLX+兜底Job，主链路不阻塞
+10. **全链路联动**：DDL → PO → VO → DTO → 前端TS → MQ消息体，六层同步约束
 
 这些设计思想可以应用到其他企业级项目中。

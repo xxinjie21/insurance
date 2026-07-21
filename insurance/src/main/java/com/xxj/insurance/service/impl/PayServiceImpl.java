@@ -11,6 +11,7 @@ import com.xxj.insurance.domain.po.Settle;
 import com.xxj.insurance.mapper.PayMapper;
 import com.xxj.insurance.service.IBatchItemService;
 import com.xxj.insurance.service.IBatchService;
+import com.xxj.insurance.common.mq.MqMessageSender;
 import com.xxj.insurance.service.IAuditService;
 import com.xxj.insurance.service.IPayService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -50,6 +51,7 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, Pay> implements IPayS
     private final IBatchItemService batchItemService;
     private final ISettleService settleService;
     private final IAuditService auditService;
+    private final MqMessageSender mqMessageSender;
     private final RedissonClient redissonClient;
     private final TransactionTemplate transactionTemplate;
 
@@ -195,6 +197,9 @@ public class PayServiceImpl extends ServiceImpl<PayMapper, Pay> implements IPayS
             }
             settleService.updateBatchById(settleList);
         }
+
+        // MQ异步：拨付完成通知
+        try { mqMessageSender.sendPayComplete(batchId, pay); } catch (Exception e) { log.warn("MQ发送失败:{}", e.getMessage()); }
 
         // 注意：幂等标记已移到事务提交后（外层 payBatch 方法中）
         log.info("拨付成功，批次 ID: {}, 拨付 ID: {}", batchId, pay.getId());

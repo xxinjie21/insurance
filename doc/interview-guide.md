@@ -18,11 +18,11 @@
 
 > 这是一个面向医疗机构的医保费用结算中台，覆盖门诊就诊结算、医保批次申报、财政基金拨付全流程数字化，支撑医院日常医保报销业务。
 >
-> 后端技术栈：Spring Boot + MyBatis-Plus + MySQL + Redis + Redisson + JWT。
+> 后端技术栈：Spring Boot + MyBatis-Plus + MySQL + Redis + Redisson + RabbitMQ + JWT。
 >
 > 系统支持四种角色：患者、医院、医保局、管理员。通过 @Permission 注解 + SpringMVC 拦截器实现 Controller/Method 级声明式权限校验。
 >
-> 我在项目中主导后端核心模块开发，重点解决了六个技术问题：并发重复提交防重、事务与缓存一致性、业务粒度分布式锁、细粒度权限管控、缓存穿透防护、N+1查询消除。
+> 我在项目中主导后端核心模块开发，重点解决了并发重复提交防重、事务与缓存一致性、业务粒度分布式锁、细粒度权限管控、缓存穿透防护、N+1查询消除、规则引擎驱动结算、MQ异步化等技术问题。
 
 ### 1.2 详细项目介绍
 
@@ -38,11 +38,11 @@
 > - 认证：JWT + Redis，实现无状态认证
 >
 > **核心功能**：
-> 1. 就诊管理：患者挂号、医院录入费用
-> 2. 医保结算：自动计算报销金额（甲类100%、乙类80%、自费0%）
-> 3. 批次申报：医院批量申报结算单
-> 4. 基金拨付：医保局审核拨付
-> 5. 患者账户：充值、支付自付部分
+> 1. 就诊管理：挂号→就诊→费用录入（支持医保目录选择）
+> 2. 医保结算：规则引擎驱动（起付线/封顶线/乙类先自付/医院等级差异/参保类型差异）
+> 3. 批次申报：医院批量申报→医保局逐单智能审核→基金拨付
+> 4. 多层次保障：基本统筹→大病保险→医疗救助→个人账户→现金，四层报销计算
+> 5. 异步消息：RabbitMQ outbox+Confirm+手动ACK+DLX兜底，主链路不阻塞
 >
 > **技术亮点**：
 > 1. 并发重复提交防重：Redis 预校验 → Redisson 分布式锁 → 数据库唯一索引，递进式三层幂等校验
@@ -51,6 +51,8 @@
 > 4. 细粒度权限管控：@Permission 注解 + SpringMVC 拦截器，Controller/Method 级声明式权限校验
 > 5. 缓存穿透防护：Cache-Aside 模式 + 空值短 TTL 缓存，防止高频查询击穿数据库
 > 6. N+1 查询消除：结算单详情接口 ID 聚合 → 批量加载 → Map 映射，SQL 从 O(N) 降至常数级
+> 7. 规则引擎驱动：报销参数由 reimburse_rule 表配置（24条规则），替代硬编码固定比例
+> 8. MQ异步化：outbox事务消息+Confirm回调+手动ACK+死信队列+@Scheduled兜底补偿
 
 ---
 
@@ -250,20 +252,14 @@ if (result != null && result.getSuccess()) {
 
 #### Q: 医保结算的计算规则是什么？
 
-**回答要点**：
-1. **甲类药品**：100% 报销
-2. **乙类药品**：80% 报销
-3. **自费药品**：0% 报销
+**回答要点**：规则引擎驱动，四层报销：
 
-```java
-private BigDecimal getReimburseRate(Integer type) {
-    switch (type) {
-        case 1: return new BigDecimal("1.00");    // 甲类
-        case 2: return new BigDecimal("0.80");    // 乙类
-        default: return BigDecimal.ZERO;          // 自费
-    }
-}
-```
+1. **基本统筹**：可报销基数 = 总费用 - 乙类先自付 - 自费类；扣除起付线后 × 报销比例，封顶线内
+2. **大病保险**：基本统筹封顶后自动进入，60%报销，上限30万
+3. **医疗救助**：困难群体额外70%报销，上限1万
+4. **患者自付**：个人账户优先 → 不足部分现金
+
+规则由 `reimburse_rule` 表配置（24条，覆盖职工/居民×6等级×门诊/住院），代码位置 [`SettleServiceImpl.java:168-320`](../insurance/src/main/java/com/xxj/insurance/service/impl/SettleServiceImpl.java#L168)
 
 #### Q: 结算金额计算为什么用 BigDecimal？
 
@@ -355,6 +351,35 @@ try {
 3. 扣款（分布式锁）
 4. 更新结算状态
 5. 创建消费记录
+
+### 2.6 RabbitMQ 相关
+
+#### Q: RabbitMQ 在项目中怎么用的？
+
+**回答要点**：
+
+1. **主链路异步化**：结算完成→发送归档消息；拨付完成→发送通知消息
+2. **可靠性保证**：消息持久化(durable Exchange/Queue) + 生产者Confirm + 消费者手动ACK
+3. **消费幂等**：复用Redisson，`idempotent:mq:{messageId}` TTL=24h防重复
+4. **失败重试**：重试3次→basicNack→死信队列(DLX)，@Scheduled 5分钟扫描补推
+5. **队列隔离**：4个队列分业务路由(门诊/异地/对账/通知)
+
+**代码文件**：[`MqMessageSender.java`](../insurance/src/main/java/com/xxj/insurance/common/mq/MqMessageSender.java) / [`MqConsumers.java`](../insurance/src/main/java/com/xxj/insurance/common/mq/MqConsumers.java) / [`MqRetryJob.java`](../insurance/src/main/java/com/xxj/insurance/common/mq/MqRetryJob.java)
+
+#### Q: 如何保证消息不丢失？
+
+| 环节 | 保障 |
+|------|------|
+| 发送端 | `mq_outbox` 事务消息表 + Confirm回调 |
+| Broker | durable Exchange/Queue + `delivery_mode=2` 持久化 |
+| 消费端 | 手动ACK，处理成功才basicAck |
+| 兜底 | 死信队列 + @Scheduled补推 |
+
+#### Q: 消息重复消费怎么处理？
+
+1. 消费端 `MqIdempotentHelper.tryConsume(messageId)` → Redis `idempotent:mq:{id}`
+2. 业务层仍走三层幂等（idempotent:settle:visit:{id} + 锁 + DB唯一索引），双重保障
+3. 已消费消息直接 `basicAck` 跳过
 
 ---
 
@@ -688,13 +713,15 @@ public void setPayService(IPayService payService) {
 
 ### 9.1 必背知识点
 
-- [ ] 项目背景和业务流程
-- [ ] 技术栈选型理由
+- [ ] 项目背景和业务流程（15模块改造后）
+- [ ] 技术栈选型理由（含RabbitMQ）
 - [ ] 三层幂等校验方案（Redis预校验 → Redisson锁 → DB唯一索引）
 - [ ] 事务与缓存一致性（编程式事务 + 提交后写缓存）
 - [ ] 分布式锁粒度设计（单据级 vs 全局级）
 - [ ] 缓存穿透防护（Cache-Aside + 空值短TTL）
 - [ ] N+1 查询消除（ID聚合 → 批量加载 → Map映射）
+- [ ] 规则引擎驱动结算（reimburse_rule表 + 四层报销计算）
+- [ ] MQ异步化（outbox+Confirm+ACK+DLX+兜底）
 - [ ] 权限控制方案（@Permission + 拦截器）
 - [ ] ThreadLocal 使用和注意事项
 - [ ] BigDecimal 金额计算
@@ -737,9 +764,9 @@ Map<Long, Entity> map = service.listByIds(ids).stream()
 2. 三层幂等校验方案（递进式：预检查 → 锁 → DB约束）
 3. 分布式锁原理和锁粒度设计
 4. 事务与缓存一致性（编程式事务 + 提交后写缓存）
-5. 缓存穿透防护（Cache-Aside + 空值短TTL）
-6. 并发安全和幂等性保证
+5. 结算规则引擎（reimburse_rule表 + 四层报销）
+6. RabbitMQ异步化（outbox+Confirm+ACK+DLX）
 7. N+1 查询问题和消除方案
 8. 权限设计方案（@Permission + 拦截器）
-9. Redis 缓存使用场景
+9. Redis/Redisson使用场景
 10. 项目难点和解决方案

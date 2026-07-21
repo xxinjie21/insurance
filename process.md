@@ -18,7 +18,7 @@
 | 模块十二：医生角色与处方 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十三：报表与导出 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 | 模块十四：数据安全与审计 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
-| 模块十五：RabbitMQ 异步消息基础设施 | ⬜ 待开始 | - | - |
+| 模块十五：RabbitMQ 异步消息基础设施 | ✅ 已完成 | 2026-07-18 | 2026-07-18 |
 
 状态：⬜ 待开始 | 🔄 进行中 | ✅ 已完成 | ❌ 已跳过
 
@@ -476,3 +476,58 @@
 | Component | `medical/ReportDashboard.vue` | **新增**：基金收支/费用构成/就诊统计三报表（按年份月份） |
 
 **编译验证**：`npm run build` 成功，无 TypeScript 错误，dist 产出正常。
+
+---
+
+### 模块十五：RabbitMQ 异步消息基础设施 ✅ 2026-07-18
+
+**改动摘要**：完整 RabbitMQ 消息体系搭建——交换机/队列/DLX声明、事务消息表(outbox)、生产者Confirm回调、手动ACK消费、MqIdempotentHelper(复用Redisson)、兜底补偿Job、结算/拨付完成后发MQ。
+
+**改动文件清单**：
+
+| 层级 | 文件 | 改动 |
+|------|------|------|
+| 依赖 | `pom.xml` | 新增 `spring-boot-starter-amqp` |
+| 配置 | `application.yml` | 新增 spring.rabbitmq 配置：publisher-confirm=correlated / manual ACK / 3次重试 |
+| 启动类 | `InsuranceApplication.java` | 加 @EnableScheduling |
+| DDL | `int.sql` | 新增 `mq_outbox` 表（UK: message_id） |
+| PO | `MqOutbox.java` | **新增**：messageId/exchange/routingKey/payload/status/retryCount/errorMsg |
+| Mapper | `MqOutboxMapper.java` | **新增** |
+| Config | `RabbitMQConfig.java` | **新增**：声明 DirectExchange(insurance.settle.direct) + DLX(insurance.dlx.direct) + 4业务队列 + 3DLQ + 全部Binding + Jackson2JsonMessageConverter |
+| Component | `MqMessageSender.java` | **新增**：sendAfterCommit(写outbox→发MQ→Confirm回调更新状态)；sendSettleComplete/sendPayComplete快捷方法 |
+| Component | `MqIdempotentHelper.java` | **新增**：tryConsume(messageId)→Redisson `idempotent:mq:{messageId}` TTL=24h |
+| Component | `MqRetryJob.java` | **新增**：@Scheduled(5min) 扫描 outbox status IN (0,2) AND retryCount<5 → 补推 → 更新状态 |
+| Component | `MqConsumers.java` | **新增**：4个 @RabbitListener(manual ACK) → 幂等去重 → basicAck / basicNack→DLQ |
+| Service | `SettleServiceImpl.java` | 注入 MqMessageSender；结算保存后调用 sendSettleComplete(visitId, settle) |
+| Service | `PayServiceImpl.java` | 注入 MqMessageSender；拨付完成后调用 sendPayComplete(batchId, pay) |
+
+**MQ拓扑**：
+
+```
+Exchange: insurance.settle.direct (durable direct)
+  queue.outpatient.settle  ← routingKey: settle.outpatient   → DLQ: queue.outpatient.settle.dlq
+  queue.remote.settle      ← routingKey: settle.remote       → DLQ: queue.remote.settle.dlq
+  queue.batch.reconcile    ← routingKey: batch.reconcile     → DLQ: queue.batch.reconcile.dlq
+  queue.audit.notify       ← routingKey: audit.notify
+
+DLX: insurance.dlx.direct (durable direct)
+```
+
+**与现有体系打通**：
+
+| 现有机制 | MQ如何打通 |
+|---------|-----------|
+| `idempotent:settle:visit:{id}` | MQ消费端额外加 `idempotent:mq:{messageId}` (24h TTL)，双重去重 |
+| `lock:settle:{visitId}` (Redisson) | 消费端进入Service时同样抢锁，与HTTP请求同锁路径 |
+| 编程式事务 TransactionTemplate | outbox写入与业务在同一事务内；Confirm回调异步更新状态 |
+| `@Permission` | 消费端无HTTP上下文，不走拦截器 |
+| N+1消除 | 消费者不涉及批量查询 |
+
+**遗漏风险**：
+- MQ依赖启动需本地运行 RabbitMQ Server（未配置Docker集成）
+- 消息体结构未严格序列化为标准JSON Schema（当前用Map+JSON）
+- 消费端业务逻辑为占位（归档/对账具体实现待补充）
+
+---
+
+### ✅ 全部 15 个模块改造完成

@@ -20,6 +20,7 @@ export const HOSPITAL_API = {
   DISABLE: (hospitalId: string | number) => `/hospital/disable/${hospitalId}`,
   SELECT: (hospitalId: string | number) => `/hospital/select/${hospitalId}`,
   UNSELECT: '/hospital/unselect',
+  SELECTED: '/hospital/selected',
 }
 
 // 就诊相关 API
@@ -28,6 +29,7 @@ export const VISIT_API = {
   MY_LIST: '/visit/my/list',
   HOSPITAL_LIST: '/visit/hospital/list',
   DELETE: (visitId: string | number) => `/visit/${visitId}`,
+  DETAIL: (visitId: string | number) => `/visit/${visitId}`,
 }
 
 // 费用相关 API
@@ -35,6 +37,7 @@ export const FEE_API = {
   BATCH_ADD: '/fee/batch/add',
   LIST_BY_VISIT: '/fee/listByVisitId',
   DELETE: (feeId: string | number) => `/fee/${feeId}`,
+  MY_LIST: '/fee/my/list',
 }
 
 // 首页仪表盘 API
@@ -68,6 +71,8 @@ export const BATCH_API = {
 export const BATCH_ITEM_API = {
   BATCH_PAGE: (batchId: string | number) => `/batch-item/batch/${batchId}/page`,
   BY_SETTLE: (settleId: string | number) => `/batch-item/by-settle/${settleId}`,
+  MEDICAL_LIST: '/batch-item/medical/list',
+  HOSPITAL_LIST: '/batch-item/hospital/list',
 }
 
 // 拨付相关 API

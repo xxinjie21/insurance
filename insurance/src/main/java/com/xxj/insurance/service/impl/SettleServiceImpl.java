@@ -11,6 +11,7 @@ import com.xxj.insurance.common.enums.Role;
 import com.xxj.insurance.common.utils.UserHolder;
 import com.xxj.insurance.domain.po.Fee;
 import com.xxj.insurance.domain.po.Hospital;
+import com.xxj.insurance.common.mq.MqMessageSender;
 import com.xxj.insurance.domain.po.ChronicDiseaseCert;
 import com.xxj.insurance.domain.po.ReimburseRule;
 import com.xxj.insurance.domain.po.RemoteMedicalFiling;
@@ -74,6 +75,7 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
     private final IReimburseRuleService reimburseRuleService;
     private final RemoteMedicalFilingMapper remoteFilingMapper;
     private final YearAccumulateMapper yearAccumulateMapper;
+    private final MqMessageSender mqMessageSender;
     private final RedissonClient redissonClient;
     private final StringRedisTemplate redisTemplate;
     private final TransactionTemplate transactionTemplate;
@@ -339,6 +341,9 @@ public class SettleServiceImpl extends ServiceImpl<SettleMapper, Settle> impleme
         this.save(settle);
 
         // 就诊状态不变，等患者付款结算后再更新为"已结算"
+
+        // MQ异步：结算完成事件
+        try { mqMessageSender.sendSettleComplete(visitId, settle); } catch (Exception e) { log.warn("MQ发送失败:{}", e.getMessage()); }
 
         // 注意：幂等标记和缓存删除已移到事务提交后
         log.info("结算成功，就诊ID:{}, 结算ID:{}, 统筹:{}, 大病:{}, 救助:{}, 个账:{}, 现金:{}",
